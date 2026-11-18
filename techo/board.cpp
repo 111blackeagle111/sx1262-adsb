@@ -9,12 +9,14 @@ extern "C" {
 }
 
 enum { POWER=12, BUTTON=42, RF_CS=24, RF_RESET=25, RF_BUSY=17,
-       TOUCH=11, LIGHT=43, BATTERY=4 };
+       TOUCH=11, LIGHT=43, BATTERY=4, GPS_WAKE=34 };
 static SPIClass rf(NRF_SPIM3,23,19,22);
 static bool touch_sample, touch_down, touch_held, light_on;
 static int64_t touch_changed, touch_pressed;
 
 void board_begin(void) {
+    /* Put the L76K in standby before enabling the peripheral supply. */
+    digitalWrite(GPS_WAKE,LOW); pinMode(GPS_WAKE,OUTPUT);
     pinMode(POWER,OUTPUT); digitalWrite(POWER,HIGH);
     pinMode(BUTTON,INPUT_PULLUP);
     pinMode(LIGHT,OUTPUT); digitalWrite(LIGHT,LOW);
