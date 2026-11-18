@@ -150,7 +150,39 @@ static int signal_y(unsigned code) {
     if (code>240) code=240;
     return 53+(int)(code-80)*80/160;
 }
+static void standby_text(const char *label, int y, int size) {
+    panel.setTextColor(BLACK);
+    panel.setTextSize(size);
+    panel.setCursor((SIDE-(6*strlen(label)-1)*size)/2,y);
+    panel.print(label);
+}
+
+static void draw_standby(void) {
+    panel.fillScreen(WHITE);
+    panel.fillCircle(100,71,53,BLACK);
+
+    /* A top-down twinjet silhouette. Keep the swept wings and tail clear
+     * of the circle's edge at the panel's native resolution. */
+    panel.fillTriangle(100,33,94,51,106,51,WHITE);
+    panel.fillRoundRect(94,44,13,63,6,WHITE);
+    panel.fillTriangle(96,56,55,85,96,76,WHITE);
+    panel.fillTriangle(104,56,145,85,104,76,WHITE);
+    panel.fillRoundRect(74,70,7,15,3,WHITE);
+    panel.fillRoundRect(120,70,7,15,3,WHITE);
+    panel.fillTriangle(97,89,79,107,97,101,WHITE);
+    panel.fillTriangle(103,89,121,107,103,101,WHITE);
+    panel.fillTriangle(96,102,104,102,100,113,WHITE);
+
+    standby_text("Standby",130,3);
+    standby_text("Tap pad or",162,2);
+    standby_text("press side key",180,2);
+}
+
 static void draw(Screen rows,CardView card,const ScopeView *v,int battery_percent,bool usb_powered,bool battery_visible) {
+    if (card==STANDBY_CARD) {
+        draw_standby();
+        return;
+    }
     panel.fillScreen(WHITE);
     panel.fillRect(0,0,200,20,BLACK);
     bool plane=card==AIRCRAFT_CARD || card==POSITION_CARD;
@@ -257,8 +289,8 @@ bool board_paint(Screen rows, CardView card, const ScopeView *scope, int battery
 }
 
 bool board_standby_screen(void) {
-    Screen rows={"STANDBY","Touch to wake","or side button"};
-    if (!board_paint(rows,NO_CARD,nullptr,-1,false,false,true)) return false;
+    Screen rows={};
+    if (!board_paint(rows,STANDBY_CARD,nullptr,-1,false,false,true)) return false;
     spi.beginTransaction(SPISettings(PAPER_SPI_HZ,MSBFIRST,SPI_MODE0));
     command(0x10,{0x01}); /* The unpowered glass keeps the message. */
     spi.endTransaction();

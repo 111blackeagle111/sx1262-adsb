@@ -133,7 +133,7 @@ The T-Echo shows an estimated battery percentage at the top right, updated every
 
 ### T-Echo manual standby
 
-Double-click the side user button to open Settings on **Hold: standby**. Hold the same button for about 0.8 seconds, then release it. Tap instead to reach the frequency controls. The receiver normally listens continuously. In standby it stops listening, finishes decoding and saving queued captures, turns off the frontlight and leaves a **STANDBY** message on the e-paper.
+Double-click the side user button to open Settings on **Hold: standby**. Hold the same button for about 0.8 seconds, then release it. Tap instead to reach the frequency controls. The receiver normally listens continuously. On entering standby it stops listening, finishes work on the queued captures, saves decoded packets and turns off the frontlight. The e-paper keeps the **Standby** screen visible.
 
 Tap the top pad or press the side button to wake. The receiver starts in LIVE with the saved frequency and packet history. Save frequency changes with a double-click before requesting standby. The L76K GPS stays in standby during normal ADS-B reception.
 
