@@ -19,6 +19,10 @@ static Scope scope;
 static uint32_t boot, saved=DEFAULT_HZ;
 static bool mounted, trace_ok=true;
 static Menu menu;
+enum { SYSTEM_STANDBY, SYSTEM_TUNING, SYSTEM_CLEAR_HISTORY, SYSTEM_ACTIONS };
+static const char *const system_labels[SYSTEM_ACTIONS]={"Standby","Tuning","Clear history"};
+static unsigned system_action;
+static bool system_open;
 static const char *notice;
 static unsigned test_count, cleaning;
 static bool redraw;
@@ -162,34 +166,59 @@ static void display_task(void *arg) {
     }
 }
 
+static void system_key(Key k) {
+    if (k==KEY_TAP) {
+        system_action=(system_action+1)%SYSTEM_ACTIONS;
+        notice=NULL;
+    } else if (k==KEY_DOUBLE) {
+        system_open=false;
+        notice=NULL;
+    } else if (k==KEY_HOLD) {
+        if (system_action==SYSTEM_STANDBY) {
+            system_open=false;
+            atomic_store(&standby_phase,STOP_RADIO);
+        } else if (system_action==SYSTEM_TUNING) {
+            system_open=false;
+            notice=NULL;
+            menu_open(&menu,atomic_load(&requested));
+            taskENTER_CRITICAL(); memset(&scope,0,sizeof(scope)); taskEXIT_CRITICAL();
+            atomic_store(&watching,true);
+        } else {
+            int64_t cutoff=uptime_ms();
+            if (!mounted || !journal_clear()) { notice="Erase failed"; return; }
+            history_clear(); cleared=cutoff; test_count=0; notice="History cleared";
+        }
+    }
+}
+
 static void key(Key k) {
     if (k==KEY_NONE) return;
     redraw=true;
+    if (system_open) {
+        system_key(k);
+        return;
+    }
     if (!menu.open) {
         if (k==KEY_TAP) history_older();
         else if (k==KEY_HOLD) history_live();
         else if (k==KEY_DOUBLE) {
-            menu_open(&menu,atomic_load(&requested)); notice=NULL;
-            menu.offer_standby=true;
-            menu.action=STANDBY;
-            taskENTER_CRITICAL(); memset(&scope,0,sizeof(scope)); taskEXIT_CRITICAL();
-            atomic_store(&watching,true);
+            system_open=true;
+            system_action=SYSTEM_STANDBY;
+            notice=NULL;
         }
         return;
     }
     if (k==KEY_REPEAT && menu.action!=TUNE_UP && menu.action!=TUNE_DOWN) return;
     notice=NULL;
-    if (k==KEY_TAP) { menu_next(&menu); return; }
+    if (k==KEY_TAP) {
+        menu_next(&menu);
+        if (menu.action==CLEAR_HISTORY) menu_next(&menu);
+        return;
+    }
     if (k==KEY_DOUBLE) {
         if (!atomic_load(&ready) || atomic_load(&applied)!=menu.hz) { notice="Tuning..."; return; }
         if (saved!=menu.hz && (!mounted || !journal_dial(menu.hz))) { notice="Save failed"; return; }
         saved=menu.hz;
-    } else if (menu.action==STANDBY) {
-        atomic_store(&standby_phase,STOP_RADIO);
-    } else if (menu.action==CLEAR_HISTORY) {
-        int64_t cutoff=uptime_ms();
-        if (!mounted || !journal_clear()) { notice="Erase failed"; return; }
-        history_clear(); cleared=cutoff; test_count=0; notice="History cleared"; return;
     } else if (menu.action==DISCARD) {
         atomic_store(&requested,saved);
     } else {
@@ -207,10 +236,10 @@ static void console(const Page *last_page) {
         line[used]=0; used=0;
         if (!strcmp(line,"status")) {
             char msg[320];
-            snprintf(msg,sizeof(msg),"SXSTATUS %08"PRIx32" ready=%d selftest=%d bursts=%u polls=%u queue_full=%u retries=%u error=%d log=%d oled=%d dial=%u saved=%u menu=%d heap=%d\n",
+            snprintf(msg,sizeof(msg),"SXSTATUS %08"PRIx32" ready=%d selftest=%d bursts=%u polls=%u queue_full=%u retries=%u error=%d log=%d oled=%d dial=%u saved=%u menu=%d heap=%d system=%d\n",
                 boot,(int)atomic_load(&ready),atomic_load(&decoder_ok),atomic_load(&bursts),
                 atomic_load(&polls),atomic_load(&dropped),atomic_load(&retries),atomic_load(&radio_error),
-                mounted && trace_ok,(int)atomic_load(&painted),atomic_load(&applied),(unsigned)saved,menu.open,board_free_heap());
+                mounted && trace_ok,(int)atomic_load(&painted),atomic_load(&applied),(unsigned)saved,menu.open,board_free_heap(),system_open);
             board_print(msg);
         } else if (!strcmp(line,"battery")) {
             char msg[80];
@@ -228,7 +257,7 @@ static void console(const Page *last_page) {
         } else if (!strncmp(line,"tune ",5)) {
             char *end;
             unsigned long hz=strtoul(line+5,&end,10);
-            if (!menu.open && !*end && hz>=MIN_HZ && hz<=MAX_HZ)
+            if (!menu.open && !system_open && !*end && hz>=MIN_HZ && hz<=MAX_HZ)
                 atomic_store(&requested,(uint32_t)hz); /* USB bench setting lasts until reset. */
         } else if (!strcmp(line,"key double")) key(KEY_DOUBLE);
         else if (!strcmp(line,"key tap")) key(KEY_TAP);
@@ -286,7 +315,7 @@ static void field_task(void *arg) {
         bool pressed=board_button();
         if (!pressed) ignore_button=false;
         Key event=button_update(&button,pressed && !ignore_button,now);
-        if (!was_down && button.down) allow_clean=!menu.open;
+        if (!was_down && button.down) allow_clean=!menu.open && !system_open;
         key(event);
         if (atomic_load(&standby_phase)!=LISTENING) continue;
         /* Holding still returns to LIVE after 0.8 s. Keep holding for three
@@ -303,7 +332,16 @@ static void field_task(void *arg) {
         page.battery_percent=battery_percent;
         page.usb_powered=usb_powered;
         page.battery_visible=battery_visible;
-        if (menu.open) {
+        if (system_open) {
+            strcpy(page.rows[0],"Settings");
+            for (unsigned i=0;i<SYSTEM_ACTIONS;i++)
+                snprintf(page.rows[i+1],17,"%s%s",system_action==i?"> ":"  ",system_labels[i]);
+            if (notice) snprintf(page.rows[4],17,"%.16s",notice);
+            strcpy(page.rows[5],"Tap to select");
+            static const char *const hints[]={"Hold to sleep","Hold to open","Hold to erase"};
+            strcpy(page.rows[6],hints[system_action]);
+            strcpy(page.rows[7],"2x to close");
+        } else if (menu.open) {
             if (atomic_load(&failed)==menu.hz) {
                 menu.hz=atomic_load(&requested); notice="PLL did not lock";
             }

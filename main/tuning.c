@@ -134,8 +134,7 @@ void menu_open(Menu *m, uint32_t hz) {
 }
 
 void menu_next(Menu *m) {
-    Action last=m->offer_standby ? STANDBY : CLEAR_HISTORY;
-    m->action=(m->action+1)%(last+1);
+    m->action=(m->action+1)%(CLEAR_HISTORY+1);
 }
 
 void menu_adjust(Menu *m) {
@@ -146,7 +145,6 @@ void menu_adjust(Menu *m) {
     case STEP_SIZE: m->step=(m->step+1)%(sizeof(steps)/sizeof(*steps)); break;
     case DEFAULT_FREQ: m->hz=DEFAULT_HZ; break;
     case DISCARD:
-    case STANDBY:
     case CLEAR_HISTORY: break;  /* The field task handles these actions. */
     }
 }
@@ -166,7 +164,6 @@ void menu_screen(const Menu *m, const ScopeView *v, const char *message, Screen 
     case STEP_SIZE: snprintf(s[6],17,"Hold: step %s",labels[m->step]); break;
     case DEFAULT_FREQ: strcpy(s[6],"Hold: default"); break;
     case DISCARD: strcpy(s[6],"Hold: discard"); break;
-    case STANDBY: strcpy(s[6],"Hold: standby"); break;
     case CLEAR_HISTORY:
         strcpy(s[6],"Clear history");
         strcpy(s[7],"Hold to erase");

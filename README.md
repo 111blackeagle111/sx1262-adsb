@@ -125,7 +125,7 @@ For **later updates** to this receiver, run the build and flash commands only. T
 | --- | --- |
 | Browse the last 64 packet cards | Tap once per older packet |
 | Return to live reception | Hold for 0.8 seconds |
-| Open frequency settings | Double-click |
+| Open settings | Double-click |
 
 On the T-Echo, hold the top capacitive button and count aloud **1001 1002 1003**, then release it to switch the display light on or off. The light changes when you release the sensor: if it was on, it turns off; if it was off, it turns on. To show or hide the battery icon, hold the sensor and count aloud **1001 1002 1003 1004 1005 1006 1007 1008**. As soon as the icon disappears or reappears, the command has been recognized and you can release the sensor. The longer gesture changes battery visibility once and leaves the light unchanged. These counting instructions give a comfortable margin over the firmware's unchanged two-second light and five-second battery thresholds. Brief touches do nothing. The light starts off and the battery icon starts visible after a restart. ADS-B reception and display updates continue with either setting. When the battery is hidden, the first text row returns to its original position.
 
@@ -133,7 +133,7 @@ The T-Echo shows an estimated battery percentage at the top right, updated every
 
 ### T-Echo manual standby
 
-Double-click the side user button to open Settings on **Hold: standby**. Hold the same button for about 0.8 seconds, then release it. Tap instead to reach the frequency controls. The receiver normally listens continuously. On entering standby it stops listening, finishes work on the queued captures, saves decoded packets and turns off the frontlight. The e-paper keeps the **Standby** screen visible.
+Double-click the side user button to open the Settings menu. The menu opens on **Standby**. Tap to select **Tuning** or **Clear history**, or hold for about 0.8 seconds and release to apply the selected action. Double-click to close the menu. The receiver normally listens continuously. On entering standby it stops listening, finishes work on the queued captures, saves decoded packets and turns off the frontlight. The e-paper keeps the **Standby** screen visible.
 
 Tap the top pad or press the side button to wake. The receiver starts in LIVE with the saved frequency and packet history. Save frequency changes with a double-click before requesting standby. The L76K GPS stays in standby during normal ADS-B reception.
 
@@ -174,9 +174,9 @@ For the first position the board needs one odd and one even airborne position re
 
 ### Frequency settings and signal graph
 
-The transmit frequency for 1090 MHz ADS-B is fixed. The default **receiver dial is 1089.800 MHz** because that setting placed the aircraft signal in a more sensitive part of this board's receive filter. In settings, **tap** to cycle through increase, decrease, step size, default, discard and clear history. **Hold** to apply the selected action. The radio retunes immediately after a frequency change. **Double-click** to save the frequency across power cycles and return to the aircraft display.
+The transmit frequency for 1090 MHz ADS-B is fixed. The default **receiver dial is 1089.800 MHz** because that setting placed the aircraft signal in a more sensitive part of this board's receive filter. On the T-Echo, select **Tuning** in Settings and hold to open the frequency controls and RSSI graph. On the T3-S3, a double-click opens these controls directly. **Tap** to cycle through increase, decrease, step size, default and discard. **Hold** to apply the selected action. The radio retunes immediately after a frequency change. **Double-click** to save the frequency across power cycles and return to the aircraft display.
 
-To start a new outing with an empty list, tap until **Clear history** appears, then hold the button for 0.8 seconds until **History cleared** appears. This resets the aircraft count and permanently deletes the saved packet recordings on the board, including those available over USB. The separate background power recordings and the tuned frequency are kept.
+To start a new outing with an empty list, select **Clear history** in the T-Echo Settings menu or in the T3-S3 frequency settings. Hold the button for 0.8 seconds until **History cleared** appears. This resets the aircraft count and permanently deletes the saved packet recordings on the board, including those available over USB. The separate background power recordings and the tuned frequency are kept.
 
 `RX` is the frequency the receiver is listening to, in MHz. **A** is average signal strength over 200 ms and **P** is the peak over one second. Both are in dBm. A reading of −75 dBm is stronger than −93 dBm.
 
