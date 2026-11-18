@@ -131,6 +131,12 @@ On the T-Echo, hold the top capacitive button and count aloud **1001 1002 1003**
 
 The T-Echo shows an estimated battery percentage at the top right, updated every 30 seconds while running on battery. It averages eight voltage readings from the board's battery divider and estimates LiPo charge from the voltage. The estimate reaches 100% at 4.14 V. This empirical value was inferred from the 91% shown by the previous curve after charging one T-Echo. An out-of-range reading shows `--%`. With USB power connected, it shows `USB` and does not measure or display a percentage: LilyGO documents that the ADC battery reading is inaccurate while charging. USB detection also works with a charger without a data connection. The red charging LED stays on during charging and turns off when fully charged; the firmware cannot read that LED's status. Type `battery` over USB to inspect the power source; `mv=0 percent=-1` means the battery estimate is unavailable on USB. [LilyGO charging and LED documentation](https://github.com/Xinyuan-LilyGO/T-Echo/blob/main/README.MD#charger-led-status)
 
+### T-Echo manual standby
+
+Double-click the side user button to open Settings on **Hold: standby**. Hold the same button for about 0.8 seconds, then release it. Tap instead to reach the frequency controls. The receiver normally listens continuously. In standby it stops listening, finishes decoding and saving queued captures, turns off the frontlight and leaves a **STANDBY** message on the e-paper.
+
+Tap the top pad or press the side button to wake. The receiver starts in LIVE with the saved frequency and packet history. Save frequency changes with a double-click before requesting standby. The L76K GPS stays in standby during normal ADS-B reception.
+
 ### T-Echo e-paper refresh
 
 ![The T-Echo shows LAB123's altitude, then its coordinates. The callsign stays in place as the detail lines refresh.](docs/techo-refresh.gif)

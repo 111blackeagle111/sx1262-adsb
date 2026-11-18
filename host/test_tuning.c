@@ -129,5 +129,15 @@ int main(void) {
     CHECK(m.hz==DEFAULT_HZ);
     menu_next(&m);
     CHECK(m.action==TUNE_UP);
+
+    m.offer_standby=true;
+    m.action=STANDBY;
+    menu_screen(&m,&v,NULL,s);
+    CHECK(!strcmp(s[6],"Hold: standby") && !strcmp(s[7],"Tap next 2x save"));
+    menu_next(&m);
+    CHECK(m.action==TUNE_UP);
+    m.action=CLEAR_HISTORY;
+    menu_next(&m);
+    CHECK(m.action==STANDBY);
     return 0;
 }

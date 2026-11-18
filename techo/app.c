@@ -27,7 +27,11 @@ static int battery_percent=-1;
 static bool usb_powered;
 static bool battery_visible=true;
 static int64_t cleared=-1;
-typedef struct { Screen rows; CardView card; bool graph, usb_powered, battery_visible; ScopeView scope; unsigned cleaning; int battery_percent; } Page;
+enum { LISTENING, STOP_RADIO, RADIO_STOPPED, DECODER_DRAINED };
+static atomic_int standby_phase;
+static int64_t radio_stopped_at;
+static bool ignore_button;
+typedef struct { Screen rows; CardView card; bool graph, usb_powered, battery_visible, standby; ScopeView scope; unsigned cleaning; int battery_percent; } Page;
 
 static int arm(Capture *c) {
     uint32_t hz=atomic_load(&requested);
@@ -54,6 +58,7 @@ static int receive(void) {
     int64_t last=uptime_ms(), calibrated=last;
     for (;;) {
         vTaskDelay(1);
+        bool stopping=atomic_load(&standby_phase)==STOP_RADIO;
         uint8_t state;
         if ((err=radio_state(&state))) return err;
         atomic_fetch_add(&polls,1);
@@ -64,6 +69,7 @@ static int receive(void) {
             c.block=atomic_fetch_add(&bursts,1)+1;
             if (!xQueueSend(captures,&c,0)) atomic_fetch_add(&dropped,1);
         } else if (state!=SCAN_ARMED) return 0x103;
+        if (stopping) return 0; /* Hand off the last completed capture first. */
         if (atomic_load(&watching)) {
             uint8_t level;
             if ((err=radio_rssi(&level))) return err;
@@ -83,9 +89,18 @@ static int receive(void) {
 static void radio_task(void *arg) {
     (void)arg;
     for (;;) {
+        if (atomic_load(&standby_phase)==STOP_RADIO) {
+            int err=radio_sleep();
+            atomic_store(&radio_error,err);
+            atomic_store(&ready,false);
+            radio_stopped_at=uptime_ms();
+            atomic_store(&standby_phase,RADIO_STOPPED);
+            vTaskSuspend(NULL);
+        }
         int err=radio_bus_init();
         if (!err) err=radio_self_test();
         if (!err) err=receive();
+        if (atomic_load(&standby_phase)==STOP_RADIO) continue;
         atomic_store(&ready,false); atomic_store(&radio_error,err);
         atomic_fetch_add(&retries,1);
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -102,12 +117,24 @@ static void decoder_task(void *arg) {
     (void)arg;
     bool ok=decoder_init(publish) && decoder_self_test();
     atomic_store(&decoder_ok,ok?1:-1);
-    if (!ok) { vTaskDelete(NULL); return; }
     Capture c;
     for (;;) {
-        if (xQueueReceive(captures,&c,0)) decoder_capture(&c);
-        else if (!decoder_idle(uptime_ms()) && xQueueReceive(captures,&c,pdMS_TO_TICKS(10)))
+        /* Check the producer before the queue so a final capture cannot
+         * arrive after the decoder has declared itself drained. */
+        bool stopped=atomic_load(&standby_phase)==RADIO_STOPPED;
+        int64_t now=uptime_ms();
+        if (ok && xQueueReceive(captures,&c,0)) {
             decoder_capture(&c);
+            continue;
+        }
+        if (ok && decoder_idle(now)) continue;
+        /* Short replies can still publish a final vote after 40 ms of quiet. */
+        if (stopped && now-radio_stopped_at>=50) {
+            atomic_store(&standby_phase,DECODER_DRAINED);
+            vTaskSuspend(NULL);
+        }
+        if (!ok || stopped) vTaskDelay(pdMS_TO_TICKS(10));
+        else if (xQueueReceive(captures,&c,pdMS_TO_TICKS(10))) decoder_capture(&c);
     }
 }
 
@@ -120,6 +147,14 @@ static void display_task(void *arg) {
         /* On timeout the old page is still here. A failed BUSY handshake
          * invalidates the panel shadow and the next attempt starts clean. */
         xQueueReceive(pages,&page,wait);
+        if (page.standby) {
+            bool ok=board_standby_screen();
+            char msg[70];
+            snprintf(msg,sizeof(msg),"SXSLEEP radio_error=%d paper=%d\n",
+                     atomic_load(&radio_error),(int)ok);
+            board_print(msg);
+            board_standby();
+        }
         bool ok=board_paint(page.rows,page.card,page.graph?&page.scope:NULL,page.battery_percent,page.usb_powered,page.battery_visible,page.cleaning!=cleaned);
         if (ok) cleaned=page.cleaning;
         atomic_store(&painted,ok);
@@ -135,6 +170,8 @@ static void key(Key k) {
         else if (k==KEY_HOLD) history_live();
         else if (k==KEY_DOUBLE) {
             menu_open(&menu,atomic_load(&requested)); notice=NULL;
+            menu.offer_standby=true;
+            menu.action=STANDBY;
             taskENTER_CRITICAL(); memset(&scope,0,sizeof(scope)); taskEXIT_CRITICAL();
             atomic_store(&watching,true);
         }
@@ -147,6 +184,8 @@ static void key(Key k) {
         if (!atomic_load(&ready) || atomic_load(&applied)!=menu.hz) { notice="Tuning..."; return; }
         if (saved!=menu.hz && (!mounted || !journal_dial(menu.hz))) { notice="Save failed"; return; }
         saved=menu.hz;
+    } else if (menu.action==STANDBY) {
+        atomic_store(&standby_phase,STOP_RADIO);
     } else if (menu.action==CLEAR_HISTORY) {
         int64_t cutoff=uptime_ms();
         if (!mounted || !journal_clear()) { notice="Erase failed"; return; }
@@ -216,6 +255,15 @@ static void field_task(void *arg) {
             }
             if (mounted) trace_ok=journal_save(&r,boot,test_count);
         }
+        int phase=atomic_load(&standby_phase);
+        if (phase!=LISTENING) {
+            if (phase==DECODER_DRAINED && !uxQueueMessagesWaiting(results)) {
+                page.standby=true;
+                xQueueOverwrite(pages,&page);
+                vTaskSuspend(NULL);
+            }
+            continue;
+        }
         int64_t now=uptime_ms();
         if (board_poll_touch(now)) {
             battery_visible=!battery_visible;
@@ -235,9 +283,12 @@ static void field_task(void *arg) {
             battery_read=now;
         }
         bool was_down=button.down;
-        Key event=button_update(&button,board_button(),now);
+        bool pressed=board_button();
+        if (!pressed) ignore_button=false;
+        Key event=button_update(&button,pressed && !ignore_button,now);
         if (!was_down && button.down) allow_clean=!menu.open;
         key(event);
+        if (atomic_load(&standby_phase)!=LISTENING) continue;
         /* Holding still returns to LIVE after 0.8 s. Keep holding for three
          * seconds to wash out a ghost image without restarting the receiver. */
         if (allow_clean && button.down && button.held && now-button.pressed>=3000) {
@@ -275,6 +326,8 @@ static void field_task(void *arg) {
 }
 
 void techo_start(void) {
+    /* A button held through wake belongs to the previous screen. */
+    ignore_button=board_button();
     boot=board_random(); history_set_boot(boot);
     mounted=journal_begin(&saved); atomic_store(&requested,saved);
     captures=xQueueCreate(16,sizeof(Capture));

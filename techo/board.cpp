@@ -28,6 +28,21 @@ void board_begin(void) {
 }
 void board_bootloader(void) { enterUf2Dfu(); }
 bool board_button(void) { return digitalRead(BUTTON)==LOW; }
+void board_standby(void) {
+    digitalWrite(LIGHT,LOW);
+    /* Keep PWR_ON asserted so the capacitive pad can still wake the board.
+     * Wait for stable release before arming the level-sensitive inputs. */
+    unsigned released=0;
+    while (released<4) {
+        delay(10);
+        released=board_button() || digitalRead(TOUCH)==LOW ? 0 : released+1;
+    }
+    pinMode(TOUCH,INPUT_PULLUP_SENSE);
+    /* System OFF wakes via reset. Skip DFU if the wake button is still down. */
+    NRF_POWER->GPREGRET=0x6d;
+    systemOff(BUTTON,LOW);
+    for (;;) __WFE();
+}
 bool board_poll_touch(int64_t now) {
     /* Release after two seconds to toggle the light, or hold for five
      * seconds to request one battery visibility change. Short touches

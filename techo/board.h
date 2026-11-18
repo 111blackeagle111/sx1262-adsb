@@ -15,6 +15,8 @@ int board_battery_percent(unsigned mv);
 bool board_usb_powered(void);
 void board_begin(void);
 void board_bootloader(void);
+void board_standby(void);
+bool board_standby_screen(void);
 bool board_paint(Screen s, CardView card, const ScopeView *scope, int battery_percent, bool usb_powered, bool battery_visible, bool clean);
 void board_paper_status(void);
 int board_getchar(void);

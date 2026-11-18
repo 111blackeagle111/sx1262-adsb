@@ -30,8 +30,8 @@ typedef struct {
     unsigned samples, columns, triggers;
     int level, strongest;
 } ScopeView;
-typedef enum { TUNE_UP, TUNE_DOWN, STEP_SIZE, DEFAULT_FREQ, DISCARD, CLEAR_HISTORY } Action;
-typedef struct { uint32_t hz; unsigned step; Action action; bool open; } Menu;
+typedef enum { TUNE_UP, TUNE_DOWN, STEP_SIZE, DEFAULT_FREQ, DISCARD, CLEAR_HISTORY, STANDBY } Action;
+typedef struct { uint32_t hz; unsigned step; Action action; bool open, offer_standby; } Menu;
 
 Key button_update(Button *b, bool pressed, int64_t now);
 void scope_sample(Scope *scope, uint32_t hz, int64_t now, uint8_t rssi, const Capture *burst);

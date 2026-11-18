@@ -256,6 +256,15 @@ bool board_paint(Screen rows, CardView card, const ScopeView *scope, int battery
     return ok;
 }
 
+bool board_standby_screen(void) {
+    Screen rows={"STANDBY","Touch to wake","or side button"};
+    if (!board_paint(rows,NO_CARD,nullptr,-1,false,false,true)) return false;
+    spi.beginTransaction(SPISettings(PAPER_SPI_HZ,MSBFIRST,SPI_MODE0));
+    command(0x10,{0x01}); /* The unpowered glass keeps the message. */
+    spi.endTransaction();
+    return true;
+}
+
 void board_paper_status(void) {
     taskENTER_CRITICAL(); Stats s=stats; taskEXIT_CRITICAL();
     char msg[176];
