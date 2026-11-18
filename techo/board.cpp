@@ -72,13 +72,14 @@ unsigned board_battery_mv(void) {
     return (sum*6000u+8*4096/2)/(8*4096);
 }
 int board_battery_percent(unsigned mv) {
-    /* Voltage-based LiPo estimate, as in Adafruit's adc_vbat example:
-     * 3.3 V = 0%, 3.6 V = 10%, 4.2 V = 100%. Not a fuel gauge. */
+    /* Keep the 3.3 V and 3.6 V anchors. Use 4.14 V for 100%, inferred
+     * from the 91% shown by the old curve after charging one T-Echo. */
+    constexpr unsigned full_mv=4140;
     if (mv<2500 || mv>4500) return -1;
     if (mv<=3300) return 0;
-    if (mv>=4200) return 100;
+    if (mv>=full_mv) return 100;
     if (mv<3600) return (mv-3300)/30;
-    return 10+(mv-3600)*15/100;
+    return 10+(mv-3600)*90/(full_mv-3600);
 }
 bool board_usb_powered(void) {
     /* Detect VBUS itself, including a wall charger without a USB host.
