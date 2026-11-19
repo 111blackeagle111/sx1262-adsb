@@ -6,6 +6,7 @@
 #include <Adafruit_GFX.h>
 #include <initializer_list>
 #include "board.h"
+#include "standby_art.h"
 
 enum { SIDE=200, STRIDE=SIDE/8, CS=30, DC=28, RESET_PIN=2, BUSY=3,
        PAPER_SPI_HZ=8000000, BLACK=0, WHITE=1 };
@@ -150,37 +151,10 @@ static int signal_y(unsigned code) {
     if (code>240) code=240;
     return 53+(int)(code-80)*80/160;
 }
-static void standby_text(const char *label, int y, int size) {
-    panel.setTextColor(BLACK);
-    panel.setTextSize(size);
-    panel.setCursor((SIDE-(6*strlen(label)-1)*size)/2,y);
-    panel.print(label);
-}
-
-static void draw_formation_jet(int x, int y) {
-    panel.fillTriangle(x,y,x-3,y+10,x+3,y+10,WHITE);
-    panel.fillRect(x-2,y+8,5,19,WHITE);
-    panel.fillTriangle(x-2,y+10,x-13,y+20,x-2,y+17,WHITE);
-    panel.fillTriangle(x+2,y+10,x+13,y+20,x+2,y+17,WHITE);
-    panel.fillTriangle(x-2,y+20,x-7,y+27,x-2,y+25,WHITE);
-    panel.fillTriangle(x+2,y+20,x+7,y+27,x+2,y+25,WHITE);
-}
 
 static void draw_standby(void) {
-    panel.fillScreen(WHITE);
-    panel.fillCircle(100,71,53,BLACK);
-
-    /* Frecce Tricolori motif with three smoke trails in monochrome. */
-    draw_formation_jet(100,30);
-    draw_formation_jet(72,52);
-    draw_formation_jet(128,52);
-    panel.fillRect(99,62,3,51,WHITE);
-    panel.fillRect(71,84,3,23,WHITE);
-    panel.fillRect(127,84,3,23,WHITE);
-
-    standby_text("Standby",130,3);
-    standby_text("Tap pad or",162,2);
-    standby_text("press side key",180,2);
+    static_assert(sizeof(standby_art)==SIDE*STRIDE, "Standby bitmap size mismatch");
+    panel.drawBitmap(0,0,standby_art,SIDE,SIDE,WHITE,BLACK);
 }
 
 static void draw(Screen rows,CardView card,const ScopeView *v,int battery_percent,bool usb_powered,bool battery_visible) {
