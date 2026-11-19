@@ -18,5 +18,6 @@ void history_set_boot(uint32_t boot);
 void history_older(void);
 void history_live(void);
 CardView history_screen(Screen screen, uint32_t boot, int64_t now);
+CardView history_screen_language(Screen screen, uint32_t boot, int64_t now, bool italian);
 bool card_valid(const Card *c);
 #endif

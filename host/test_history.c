@@ -19,6 +19,8 @@ int main(void) {
     history_set_boot(1);
     const Screen listening={"LIVE       Air 0","1090 MHz","Listening"};
     CHECK(history_screen(s,1,0)==NO_CARD && !memcmp(s,listening,sizeof(s)));
+    CHECK(history_screen_language(s,1,0,true)==NO_CARD);
+    CHECK(strstr(s[0],"Voli 0") && !strcmp(s[2],"In ascolto"));
     Card lab=packet(1,1000,"8dabc123203010b1cb3820de9e79");
     history_add(lab);
     /* Ages are measured from reception. The last glyph occupies the
@@ -47,6 +49,9 @@ int main(void) {
     history_older();
     history_screen(s,1,5000);
     CHECK(!strcmp(s[1],"48C12B") && !strcmp(s[3],"420 kt") && !strcmp(s[5],"Track 203 deg"));
+    CHECK(history_screen_language(s,1,5000,true)==AIRCRAFT_CARD);
+    CHECK(!strcmp(s[1],"48C12B") && !strcmp(s[3],"420 kt") && !strcmp(s[5],"Rotta 203 deg"));
+    CHECK(history_screen(s,1,5000)==AIRCRAFT_CARD && !strcmp(s[5],"Track 203 deg"));
     history_live();
     history_screen(s,2,0);
     CHECK(!strcmp(s[1],"LAB123") && !strcmp(s[0],"LIVE       saved"));
@@ -75,6 +80,8 @@ int main(void) {
     CHECK(history_screen(s,2,8999)==AIRCRAFT_CARD && strstr(s[0],"1/3"));
     CHECK(history_screen(s,2,9000)==POSITION_CARD && !strcmp(s[0],"LIVE 2/3      2s"));
     CHECK(!strcmp(s[1],"THY4DC") && !strcmp(s[3],"37.47551 N") && !strcmp(s[5],"15.17177 E"));
+    CHECK(history_screen_language(s,2,9000,true)==POSITION_CARD);
+    CHECK(!strcmp(s[3],"37.47551 N") && !strcmp(s[7],"Posizione volo"));
     CHECK(history_screen(s,2,12000)==AIRCRAFT_CARD && strstr(s[0],"3/3"));
     CHECK(strstr(s[3],"Sel ") && !strcmp(s[5],"ICAO 4BAA79") && !strcmp(s[6],"TC29 Target"));
     history_older(); /* even */

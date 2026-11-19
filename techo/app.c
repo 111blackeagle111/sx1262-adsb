@@ -19,10 +19,13 @@ static Scope scope;
 static uint32_t boot, saved=DEFAULT_HZ;
 static bool mounted, trace_ok=true;
 static Menu menu;
-enum { SYSTEM_STANDBY, SYSTEM_TUNING, SYSTEM_CLEAR_HISTORY, SYSTEM_ACTIONS };
-static const char *const system_labels[SYSTEM_ACTIONS]={"Standby","Tuning","Clear history"};
+enum { SYSTEM_STANDBY, SYSTEM_TUNING, SYSTEM_CLEAR_HISTORY, SYSTEM_LANGUAGE, SYSTEM_ACTIONS };
+static const char *const system_labels[2][SYSTEM_ACTIONS]={
+    {"Standby","Tuning","Clear history","Language"},
+    {"Standby","Sintonia","Svuota storico","Lingua"}
+};
 static unsigned system_action;
-static bool system_open;
+static bool system_open, italian, language_open, language_choice;
 static const char *notice;
 static unsigned test_count, cleaning;
 static bool redraw;
@@ -35,7 +38,7 @@ enum { LISTENING, STOP_RADIO, RADIO_STOPPED, DECODER_DRAINED };
 static atomic_int standby_phase;
 static int64_t radio_stopped_at;
 static bool ignore_button;
-typedef struct { Screen rows; CardView card; bool graph, usb_powered, battery_visible, standby; ScopeView scope; unsigned cleaning; int battery_percent; } Page;
+typedef struct { Screen rows; CardView card; bool graph, usb_powered, battery_visible, standby, italian; ScopeView scope; unsigned cleaning; int battery_percent; } Page;
 
 static int arm(Capture *c) {
     uint32_t hz=atomic_load(&requested);
@@ -152,14 +155,14 @@ static void display_task(void *arg) {
          * invalidates the panel shadow and the next attempt starts clean. */
         xQueueReceive(pages,&page,wait);
         if (page.standby) {
-            bool ok=board_standby_screen();
+            bool ok=board_standby_screen(page.italian);
             char msg[70];
             snprintf(msg,sizeof(msg),"SXSLEEP radio_error=%d paper=%d\n",
                      atomic_load(&radio_error),(int)ok);
             board_print(msg);
             board_standby();
         }
-        bool ok=board_paint(page.rows,page.card,page.graph?&page.scope:NULL,page.battery_percent,page.usb_powered,page.battery_visible,page.cleaning!=cleaned);
+        bool ok=board_paint(page.rows,page.card,page.graph?&page.scope:NULL,page.battery_percent,page.usb_powered,page.battery_visible,page.italian,page.cleaning!=cleaned);
         if (ok) cleaned=page.cleaning;
         atomic_store(&painted,ok);
         wait=ok?portMAX_DELAY:pdMS_TO_TICKS(2500);
@@ -167,6 +170,24 @@ static void display_task(void *arg) {
 }
 
 static void system_key(Key k) {
+    if (language_open) {
+        if (k==KEY_TAP) {
+            language_choice=!language_choice;
+            notice=NULL;
+        } else if (k==KEY_DOUBLE) {
+            language_open=false;
+            notice=NULL;
+        } else if (k==KEY_HOLD) {
+            if (language_choice!=italian && (!mounted || !journal_language(language_choice))) {
+                notice=italian?"Salvat. fallito":"Save failed";
+                return;
+            }
+            italian=language_choice;
+            language_open=false;
+            notice=italian?"Lingua salvata":"Language saved";
+        }
+        return;
+    }
     if (k==KEY_TAP) {
         system_action=(system_action+1)%SYSTEM_ACTIONS;
         notice=NULL;
@@ -183,10 +204,15 @@ static void system_key(Key k) {
             menu_open(&menu,atomic_load(&requested));
             taskENTER_CRITICAL(); memset(&scope,0,sizeof(scope)); taskEXIT_CRITICAL();
             atomic_store(&watching,true);
+        } else if (system_action==SYSTEM_LANGUAGE) {
+            language_open=true;
+            language_choice=italian;
+            notice=NULL;
         } else {
             int64_t cutoff=uptime_ms();
-            if (!mounted || !journal_clear()) { notice="Erase failed"; return; }
-            history_clear(); cleared=cutoff; test_count=0; notice="History cleared";
+            if (!mounted || !journal_clear()) { notice=italian?"Canc. fallita":"Erase failed"; return; }
+            history_clear(); cleared=cutoff; test_count=0;
+            notice=italian?"Storico vuoto":"History cleared";
         }
     }
 }
@@ -216,8 +242,12 @@ static void key(Key k) {
         return;
     }
     if (k==KEY_DOUBLE) {
-        if (!atomic_load(&ready) || atomic_load(&applied)!=menu.hz) { notice="Tuning..."; return; }
-        if (saved!=menu.hz && (!mounted || !journal_dial(menu.hz))) { notice="Save failed"; return; }
+        if (!atomic_load(&ready) || atomic_load(&applied)!=menu.hz) {
+            notice=italian?"Sintonia...":"Tuning..."; return;
+        }
+        if (saved!=menu.hz && (!mounted || !journal_dial(menu.hz))) {
+            notice=italian?"Salvat. fallito":"Save failed"; return;
+        }
         saved=menu.hz;
     } else if (menu.action==DISCARD) {
         atomic_store(&requested,saved);
@@ -236,10 +266,10 @@ static void console(const Page *last_page) {
         line[used]=0; used=0;
         if (!strcmp(line,"status")) {
             char msg[320];
-            snprintf(msg,sizeof(msg),"SXSTATUS %08"PRIx32" ready=%d selftest=%d bursts=%u polls=%u queue_full=%u retries=%u error=%d log=%d oled=%d dial=%u saved=%u menu=%d heap=%d system=%d\n",
+            snprintf(msg,sizeof(msg),"SXSTATUS %08"PRIx32" ready=%d selftest=%d bursts=%u polls=%u queue_full=%u retries=%u error=%d log=%d oled=%d dial=%u saved=%u menu=%d heap=%d system=%d lang=%s\n",
                 boot,(int)atomic_load(&ready),atomic_load(&decoder_ok),atomic_load(&bursts),
                 atomic_load(&polls),atomic_load(&dropped),atomic_load(&retries),atomic_load(&radio_error),
-                mounted && trace_ok,(int)atomic_load(&painted),atomic_load(&applied),(unsigned)saved,menu.open,board_free_heap(),system_open);
+                mounted && trace_ok,(int)atomic_load(&painted),atomic_load(&applied),(unsigned)saved,menu.open,board_free_heap(),system_open,italian?"it":"en");
             board_print(msg);
         } else if (!strcmp(line,"battery")) {
             char msg[80];
@@ -265,6 +295,29 @@ static void console(const Page *last_page) {
     }
 }
 
+static void system_screen(Screen rows) {
+    if (language_open) {
+        strcpy(rows[0],italian?"Lingua":"Language");
+        strcpy(rows[1],language_choice?"  English":"> English");
+        strcpy(rows[2],language_choice?"> Italiano":"  Italiano");
+        strcpy(rows[4],italian?"In uso: Italiano":"In use: English");
+        if (notice) snprintf(rows[5],COLUMNS+1,"%s",notice);
+        strcpy(rows[6],italian?"Tieni: salva":"Hold to save");
+        strcpy(rows[7],italian?"Premi/2x torna":"Tap/2x back");
+        return;
+    }
+    static const char *const hints[2][SYSTEM_ACTIONS]={
+        {"Hold to sleep","Hold to open","Hold to erase","Hold to open"},
+        {"Tieni: standby","Tieni: apri","Tieni: cancella","Tieni: apri"}
+    };
+    strcpy(rows[0],italian?"Impostazioni":"Settings");
+    for (unsigned i=0;i<SYSTEM_ACTIONS;i++)
+        snprintf(rows[i+1],COLUMNS+1,"%s%s",system_action==i?"> ":"  ",system_labels[italian][i]);
+    snprintf(rows[5],COLUMNS+1,"%s",notice?notice:(italian?"Premi per scelta":"Tap to select"));
+    strcpy(rows[6],hints[italian][system_action]);
+    strcpy(rows[7],italian?"2x per uscire":"2x to close");
+}
+
 static void field_task(void *arg) {
     (void)arg;
     static Page page, previous;
@@ -288,6 +341,7 @@ static void field_task(void *arg) {
         if (phase!=LISTENING) {
             if (phase==DECODER_DRAINED && !uxQueueMessagesWaiting(results)) {
                 page.standby=true;
+                page.italian=italian;
                 xQueueOverwrite(pages,&page);
                 vTaskSuspend(NULL);
             }
@@ -332,29 +386,25 @@ static void field_task(void *arg) {
         page.battery_percent=battery_percent;
         page.usb_powered=usb_powered;
         page.battery_visible=battery_visible;
+        page.italian=italian;
         if (system_open) {
-            strcpy(page.rows[0],"Settings");
-            for (unsigned i=0;i<SYSTEM_ACTIONS;i++)
-                snprintf(page.rows[i+1],17,"%s%s",system_action==i?"> ":"  ",system_labels[i]);
-            if (notice) snprintf(page.rows[4],17,"%.16s",notice);
-            strcpy(page.rows[5],"Tap to select");
-            static const char *const hints[]={"Hold to sleep","Hold to open","Hold to erase"};
-            strcpy(page.rows[6],hints[system_action]);
-            strcpy(page.rows[7],"2x to close");
+            system_screen(page.rows);
         } else if (menu.open) {
             if (atomic_load(&failed)==menu.hz) {
-                menu.hz=atomic_load(&requested); notice="PLL did not lock";
+                menu.hz=atomic_load(&requested); notice=italian?"PLL non aggancia":"PLL did not lock";
             }
             taskENTER_CRITICAL(); snapshot=scope; taskEXIT_CRITICAL();
             scope_view(&snapshot,menu.hz,now,&page.scope);
-            menu_screen(&menu,&page.scope,menu.hz!=atomic_load(&applied)?"Tuning...":notice,page.rows);
+            const char *message=menu.hz!=atomic_load(&applied)?(italian?"Sintonia...":"Tuning..."):notice;
+            menu_screen_language(&menu,&page.scope,message,page.rows,italian);
             page.graph=true;
         } else {
-            page.card=history_screen(page.rows,boot,now);
+            page.card=history_screen_language(page.rows,boot,now,italian);
             const char *problem=NULL;
-            if (!atomic_load(&ready)) problem=atomic_load(&retries)?"Radio retry":"Starting radio";
-            if (!mounted || !trace_ok) problem="Log unavailable";
-            if (atomic_load(&decoder_ok)<0) problem="Decoder failed";
+            if (!atomic_load(&ready)) problem=atomic_load(&retries)?
+                (italian?"Riprovo radio":"Radio retry"):(italian?"Avvio radio":"Starting radio");
+            if (!mounted || !trace_ok) problem=italian?"Storico assente":"Log unavailable";
+            if (atomic_load(&decoder_ok)<0) problem=italian?"Errore decoder":"Decoder failed";
             if (problem) strcpy(page.rows[7],problem);
         }
         if (memcmp(&previous,&page,sizeof(page))) {
@@ -367,7 +417,7 @@ void techo_start(void) {
     /* A button held through wake belongs to the previous screen. */
     ignore_button=board_button();
     boot=board_random(); history_set_boot(boot);
-    mounted=journal_begin(&saved); atomic_store(&requested,saved);
+    mounted=journal_begin(&saved,&italian); atomic_store(&requested,saved);
     captures=xQueueCreate(16,sizeof(Capture));
     results=xQueueCreate(6,sizeof(Result));
     pages=xQueueCreate(1,sizeof(Page));

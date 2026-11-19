@@ -8,7 +8,10 @@
 #include <string.h>
 
 typedef struct {
-    char name[9], altitude[32], speed[32], angle[17], rate[17], selected[17], label[17];
+    char name[9], altitude[32], speed[32], rate[17], selected[17];
+    enum { NO_ANGLE, TRACK, HEADING } angle;
+    int16_t direction;
+    bool on_ground;
     bool motion, height, vertical;
 } Fields;
 
@@ -132,9 +135,11 @@ static void surface(Fields *f, const uint8_t *w) {
         snprintf(f->speed,sizeof(f->speed),"GS %g kt",knots);
         break;
     }
-    if (w[5]&8) snprintf(f->angle,sizeof(f->angle),"Track %03d deg",
-            degrees((((w[5]&7)<<4)|(w[6]>>4))*360.0/128));
-    strcpy(f->altitude,"On ground");
+    if (w[5]&8) {
+        f->angle=TRACK;
+        f->direction=degrees((((w[5]&7)<<4)|(w[6]>>4))*360.0/128);
+    }
+    f->on_ground=true;
     f->motion = f->height = f->vertical = true;
 }
 
@@ -147,11 +152,16 @@ static void velocity(Fields *f, const uint8_t *w) {
         int east = (ew-1)*scale*((w[5]&4)?-1:1);
         int north = (ns-1)*scale*((w[7]&128)?-1:1);
         snprintf(f->speed,sizeof(f->speed),"GS %ld kt",lrint(hypot(east,north)));
-        if (east || north) snprintf(f->angle,sizeof(f->angle),"Track %03d deg",
-            degrees(atan2(east,north)*180/3.141592653589793));
+        if (east || north) {
+            f->angle=TRACK;
+            f->direction=degrees(atan2(east,north)*180/3.141592653589793);
+        }
     } else if (sub>=3) {
         if (ns) snprintf(f->speed,sizeof(f->speed),"%s %d kt",(w[7]&128)?"TAS":"IAS",(ns-1)*scale);
-        if (w[5]&4) snprintf(f->angle,sizeof(f->angle),"Hdg %03d deg",degrees(ew*360.0/1024));
+        if (w[5]&4) {
+            f->angle=HEADING;
+            f->direction=degrees(ew*360.0/1024);
+        }
     }
     int climb = ((w[8]&7)<<6)|(w[9]>>2);
     if (climb) snprintf(f->rate,sizeof(f->rate),"V/S %+d fpm",(climb-1)*64*((w[8]&8)?-1:1));
@@ -160,11 +170,9 @@ static void velocity(Fields *f, const uint8_t *w) {
 static Fields fields(const Card *c) {
     Fields f = {0};
     const uint8_t *w = c->word;
-    const char *label = "Message";
-    if (c->length==7) { strcpy(f.label,"DF11 All-call"); return f; }
+    if (c->length==7) return f;
     int tc = w[4]>>3;
     if (tc>=1 && tc<=4) {
-        label = "Callsign";
         uint64_t bits = 0;
         for (int i = 5; i <= 10; i++) bits = bits*256+w[i];
         for (int i = 0; i < 8; i++) {
@@ -175,25 +183,38 @@ static Fields fields(const Card *c) {
             else { f.name[0]=0; break; }
         }
         for (int i = 7; i>=0 && f.name[i]==' '; i--) f.name[i]=0;
-    } else if (tc>=5 && tc<=8) { label="Surface"; surface(&f,w); }
+    } else if (tc>=5 && tc<=8) surface(&f,w);
     else if ((tc>=9 && tc<=18) || (tc>=20 && tc<=22)) {
         int code = w[5]*16+(w[6]>>4), feet;
-        label = "Position";
         f.height = true;
         if (tc<=18 && altitude(code,&feet)) snprintf(f.altitude,sizeof(f.altitude),"Alt %d ft",feet);
         if (tc>=20 && code) snprintf(f.altitude,sizeof(f.altitude),"GNSS %d m",code);
-    } else if (tc==19) { label="Velocity"; velocity(&f,w); }
+    } else if (tc==19) velocity(&f,w);
     else if (tc==29) {
-        label = "Target";
         int selected = ((w[5]&127)<<4)|(w[6]>>4);
         if (((w[4]>>1)&3)==1 && selected) {
             snprintf(f.selected,sizeof(f.selected),"Sel %d ft",(selected-1)*32);
         }
-    } else if (tc==28) label="Status";
-    else if (tc==31) label="Op status";
-    else if (!tc) label="No position";
-    snprintf(f.label,sizeof(f.label),"TC%d %s",tc,label);
+    }
     return f;
+}
+
+static void packet_label(char out[COLUMNS+1], const Card *c, bool italian) {
+    if (c->length==7) {
+        strcpy(out,italian?"DF11 Chiamata":"DF11 All-call");
+        return;
+    }
+    unsigned tc=c->word[4]>>3;
+    const char *label=italian?"Messaggio":"Message";
+    if (!tc) label=italian?"Senza pos.":"No position";
+    else if (tc<=4) label=italian?"Nominativo":"Callsign";
+    else if (tc<=8) label=italian?"Superficie":"Surface";
+    else if (tc<=18 || (tc>=20 && tc<=22)) label=italian?"Posizione":"Position";
+    else if (tc==19) label=italian?"Velocita":"Velocity";
+    else if (tc==28) label=italian?"Stato":"Status";
+    else if (tc==29) label=italian?"Obiettivo":"Target";
+    else if (tc==31) label=italian?"Stato oper.":"Op status";
+    snprintf(out,COLUMNS+1,"TC%u %s",tc,label);
 }
 
 static uint32_t address(const Card *c) {
@@ -204,15 +225,19 @@ static uint32_t address(const Card *c) {
  * altitude is a target, so it can coexist with a measured vertical rate. */
 static void update_flight(Flight *f, const Card *c) {
     Fields p=fields(c);
-    strcpy(f->fields.label,p.label);
     /* Keep a name through a continuous pass. After a long silence the
      * same airframe may have returned under a different flight number. */
     if (c->ms-f->seen>600000) f->fields.name[0]=0;
     if (*p.name) strcpy(f->fields.name,p.name);
-    if (p.height) { strcpy(f->fields.altitude,p.altitude); f->height_ms=c->ms; }
+    if (p.height) {
+        strcpy(f->fields.altitude,p.altitude);
+        f->fields.on_ground=p.on_ground;
+        f->height_ms=c->ms;
+    }
     if (p.motion) {
         strcpy(f->fields.speed,p.speed);
-        strcpy(f->fields.angle,p.angle);
+        f->fields.angle=p.angle;
+        f->fields.direction=p.direction;
         f->motion_ms=c->ms;
     }
     if (p.vertical) { strcpy(f->fields.rate,p.rate); f->rate_ms=c->ms; }
@@ -273,13 +298,13 @@ static void status_line(char *row, const char *left, const char *right) {
     row[COLUMNS]=0;
 }
 
-static void message_age(char age[12], const Card *c, uint32_t boot, int64_t now) {
-    if (boot!=c->boot) { strcpy(age,"saved"); return; }
+static void message_age(char age[12], const Card *c, uint32_t boot, int64_t now, bool italian) {
+    if (boot!=c->boot) { strcpy(age,italian?"salv.":"saved"); return; }
     unsigned sec=now>c->ms ? (unsigned)((now-c->ms)/1000) : 0;
     if (sec<60) snprintf(age,12,"%us",sec);
     else if (sec<3600) snprintf(age,12,"%um",sec/60);
     else if (sec<86400) snprintf(age,12,"%uh",sec/3600);
-    else snprintf(age,12,"%ud",sec/86400);
+    else snprintf(age,12,italian?"%ug":"%ud",sec/86400);
 }
 
 /* The lower 40 pixels fit one large reading and three small lines, or a
@@ -294,19 +319,26 @@ static void detail(Details *d, const char *text) {
     if (*text) snprintf(d->line[d->count++],COLUMNS+1,"%.16s",text);
 }
 
-static Details flight_details(const Flight *f) {
+static Details flight_details(const Flight *f, const Card *c, bool italian) {
     Details d={0};
     const Fields *p=&f->fields;
-    if (f->seen-f->height_ms<=60000) detail(&d,p->altitude);
-    if (f->seen-f->motion_ms<=60000) { detail(&d,p->speed); detail(&d,p->angle); }
+    if (f->seen-f->height_ms<=60000)
+        detail(&d,p->on_ground?(italian?"A terra":"On ground"):p->altitude);
+    if (f->seen-f->motion_ms<=60000) {
+        detail(&d,p->speed);
+        if (p->angle!=NO_ANGLE) {
+            const char *label=p->angle==TRACK?(italian?"Rotta":"Track"):(italian?"Prua":"Hdg");
+            snprintf(d.line[d.count++],COLUMNS+1,"%s %03d deg",label,p->direction);
+        }
+    }
     if (f->seen-f->rate_ms<=60000) detail(&d,p->rate);
     if (f->seen-f->selected_ms<=60000) detail(&d,p->selected);
     if (f->cpr.fixed && f->seen-f->cpr.fix_ms<=60000) {
         snprintf(d.lat,sizeof(d.lat),"%.5f %c",fabs(f->cpr.lat),f->cpr.lat<0?'S':'N');
-        snprintf(d.lon,sizeof(d.lon),"%.5f %c",fabs(f->cpr.lon),f->cpr.lon<0?'W':'E');
+        snprintf(d.lon,sizeof(d.lon),"%.5f %c",fabs(f->cpr.lon),f->cpr.lon<0?(italian?'O':'W'):'E');
     }
     if (*p->name) snprintf(d.line[d.count++],COLUMNS+1,"ICAO %06X",(unsigned)f->address);
-    detail(&d,p->label);
+    packet_label(d.line[d.count++],c,italian);
     return d;
 }
 
@@ -314,21 +346,23 @@ static unsigned detail_pages(const Details *d) {
     return (d->count+DETAIL_ROWS-1)/DETAIL_ROWS+(d->lat[0]!=0);
 }
 
-CardView history_screen(Screen s, uint32_t boot, int64_t now) {
+CardView history_screen_language(Screen s, uint32_t boot, int64_t now, bool italian) {
     static Flight flight;
     static Details d;
     static unsigned planes;
     static int64_t page_start;
+    static bool last_italian;
     memset(s,0,sizeof(Screen));
     History *h=browsing ? &frozen : &live;
     if (dirty) planes=aircraft_count(h);
     char left[17]="LIVE", right[16];
     if (browsing) snprintf(left,sizeof(left),"H%u/%u",back+1,h->count);
-    snprintf(right,sizeof(right),"Air %u",planes);
+    snprintf(right,sizeof(right),italian?"Voli %u":"Air %u",planes);
+    const char *hint=browsing?(italian?"Tieni RX":"Hold live"):(italian?"Premi <":"Tap older");
     if (!h->count) {
         status_line(s[0],left,right);
         strcpy(s[1],"1090 MHz");
-        strcpy(s[2],"Listening");
+        strcpy(s[2],italian?"In ascolto":"Listening");
         return NO_CARD;
     }
     unsigned index=h->count-1-back;
@@ -348,23 +382,24 @@ CardView history_screen(Screen s, uint32_t boot, int64_t now) {
         }
     }
     char age[12];
-    message_age(age,c,boot,now);
+    message_age(age,c,boot,now,italian);
     if (c->word[0]>>3==2) {
         status_line(s[0],left,age);
         snprintf(s[1],17,"TEST CRC OK %u",c->test_count);
         strcpy(s[2],"DF2   112 bits");
         snprintf(s[3],17,"Seq %u",c->word[5]*256+c->word[6]);
         for (int i=0; i<14; i++) snprintf(s[4+i/7]+2*(i%7),3,"%02X",c->word[i]);
-        status_line(s[7],browsing?"Hold live":"Tap older",right);
+        status_line(s[7],hint,right);
         dirty=false;
         restart_pages=true;
         return TEST_CARD;
     }
 
     if (flight.boot!=c->boot || flight.address!=address(c)) dirty=restart_pages=true;
-    if (dirty) {
-        flight_at(&flight,h,index);
-        d=flight_details(&flight);
+    if (dirty) flight_at(&flight,h,index);
+    if (dirty || last_italian!=italian) {
+        d=flight_details(&flight,c,italian);
+        last_italian=italian;
         dirty=false;
     }
     if (restart_pages || now<page_start) { page_start=now; restart_pages=false; }
@@ -382,7 +417,7 @@ CardView history_screen(Screen s, uint32_t boot, int64_t now) {
     if (position && page==1) {
         strcpy(s[3],d.lat);
         strcpy(s[5],d.lon);
-        strcpy(s[7],"Flight position");
+        strcpy(s[7],italian?"Posizione volo":"Flight position");
         return POSITION_CARD;
     }
     unsigned start=(page-(position && page>1))*DETAIL_ROWS;
@@ -392,6 +427,10 @@ CardView history_screen(Screen s, uint32_t boot, int64_t now) {
     strcpy(s[3],reading);
     for (unsigned i=1; i<DETAIL_ROWS && start+i<d.count; i++)
         strcpy(s[4+i],d.line[start+i]);
-    if (!*s[7]) status_line(s[7],browsing?"Hold live":"Tap older",right);
+    if (!*s[7]) status_line(s[7],hint,right);
     return AIRCRAFT_CARD;
+}
+
+CardView history_screen(Screen s, uint32_t boot, int64_t now) {
+    return history_screen_language(s,boot,now,false);
 }

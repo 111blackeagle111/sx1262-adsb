@@ -40,4 +40,6 @@ void menu_open(Menu *menu, uint32_t hz);
 void menu_next(Menu *menu);
 void menu_adjust(Menu *menu);
 void menu_screen(const Menu *menu, const ScopeView *view, const char *message, Screen rows);
+void menu_screen_language(const Menu *menu, const ScopeView *view, const char *message,
+                          Screen rows, bool italian);
 #endif

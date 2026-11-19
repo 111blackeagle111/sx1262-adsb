@@ -152,14 +152,17 @@ static int signal_y(unsigned code) {
     return 53+(int)(code-80)*80/160;
 }
 
-static void draw_standby(void) {
+static void draw_standby(bool italian) {
     static_assert(sizeof(standby_art)==SIDE*STRIDE, "Standby bitmap size mismatch");
     panel.drawBitmap(0,0,standby_art,SIDE,SIDE,WHITE,BLACK);
+    static_assert(sizeof(standby_caption_it)==STRIDE*(SIDE-standby_caption_top), "Standby caption size mismatch");
+    if (italian)
+        panel.drawBitmap(0,standby_caption_top,standby_caption_it,SIDE,SIDE-standby_caption_top,WHITE,BLACK);
 }
 
-static void draw(Screen rows,CardView card,const ScopeView *v,int battery_percent,bool usb_powered,bool battery_visible) {
+static void draw(Screen rows,CardView card,const ScopeView *v,int battery_percent,bool usb_powered,bool battery_visible,bool italian) {
     if (card==STANDBY_CARD) {
-        draw_standby();
+        draw_standby(italian);
         return;
     }
     panel.fillScreen(WHITE);
@@ -207,14 +210,14 @@ static void draw(Screen rows,CardView card,const ScopeView *v,int battery_percen
     }
 }
 
-bool board_paint(Screen rows, CardView card, const ScopeView *scope, int battery_percent, bool usb_powered, bool battery_visible, bool clean) {
+bool board_paint(Screen rows, CardView card, const ScopeView *scope, int battery_percent, bool usb_powered, bool battery_visible, bool italian, bool clean) {
     bool graph=scope!=nullptr;
     Refresh mode=(!known || clean) ? FACTORY : (graph && was_scope ? GRAPH : REPAINT);
     int64_t begin=uptime_ms();
     if (!known) { panel.setRotation(3); panel.setTextWrap(false); }
     uint8_t *image=panel.getBuffer();
     if (!image) return false;
-    draw(rows,card,scope,battery_percent,usb_powered,battery_visible);
+    draw(rows,card,scope,battery_percent,usb_powered,battery_visible,italian);
     bool whole_page=mode==FACTORY || graph!=was_scope;
     Window w=whole_page ? whole : differences(image);
     if (w.right<0) {
@@ -267,9 +270,9 @@ bool board_paint(Screen rows, CardView card, const ScopeView *scope, int battery
     return ok;
 }
 
-bool board_standby_screen(void) {
+bool board_standby_screen(bool italian) {
     Screen rows={};
-    if (!board_paint(rows,STANDBY_CARD,nullptr,-1,false,false,true)) return false;
+    if (!board_paint(rows,STANDBY_CARD,nullptr,-1,false,false,italian,true)) return false;
     spi.beginTransaction(SPISettings(PAPER_SPI_HZ,MSBFIRST,SPI_MODE0));
     command(0x10,{0x01}); /* The unpowered glass keeps the message. */
     spi.endTransaction();

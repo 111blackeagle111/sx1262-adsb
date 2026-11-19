@@ -137,6 +137,10 @@ Double-click the side user button to open the Settings menu. The menu opens on *
 
 Tap the top pad or press the side button to wake. The receiver starts in LIVE with the saved frequency and packet history. Save frequency changes with a double-click before requesting standby. The L76K GPS stays in standby during normal ADS-B reception.
 
+### T-Echo display language
+
+The same firmware includes English and Italian. Double-click the side button to open **Settings**, tap until **Language** is selected, then hold to open it. Tap to choose **English** or **Italiano** and hold to save. From Italian, go to **Impostazioni → Lingua** to change back. The language is saved across restarts and standby. An existing installation starts in English until you change it.
+
 ### T-Echo e-paper refresh
 
 ![The T-Echo shows LAB123's altitude, then its coordinates. The callsign stays in place as the detail lines refresh.](docs/techo-refresh.gif)

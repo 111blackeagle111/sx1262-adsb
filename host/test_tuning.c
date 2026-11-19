@@ -129,5 +129,10 @@ int main(void) {
     CHECK(m.hz==DEFAULT_HZ);
     menu_next(&m);
     CHECK(m.action==TUNE_UP);
+    menu_screen_language(&m,&v,NULL,s,true);
+    CHECK(!strcmp(s[0],"RX 1089.800 MHz") && !strcmp(s[6],"Tieni: +100 kHz"));
+    CHECK(!strcmp(s[7],"Premi/2x salva"));
+    menu_screen(&m,&v,NULL,s);
+    CHECK(!strcmp(s[6],"Hold: +100 kHz"));
     return 0;
 }

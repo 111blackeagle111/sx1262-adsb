@@ -149,25 +149,29 @@ void menu_adjust(Menu *m) {
     }
 }
 
-void menu_screen(const Menu *m, const ScopeView *v, const char *message, Screen s) {
+void menu_screen_language(const Menu *m, const ScopeView *v, const char *message, Screen s, bool italian) {
     memset(s,0,sizeof(Screen));
     unsigned mhz=m->hz/1000000, khz=m->hz/1000%1000;
     snprintf(s[0],17,"RX %u.%03u MHz",mhz,khz);
     if (message) snprintf(s[1],17,"%.16s",message);
-    else if (v->zoom) snprintf(s[1],17,"Hold -%u dBm",(v->wave_peak+1u)/2);
+    else if (v->zoom) snprintf(s[1],17,italian?"Picco -%u dBm":"Hold -%u dBm",(v->wave_peak+1u)/2);
     else if (v->level>=0 && v->strongest>=0)
         snprintf(s[1],17,"A-%u P-%u dBm",((uint8_t)v->level+1u)/2,((uint8_t)v->strongest+1u)/2);
-    else strcpy(s[1],"Reading RSSI...");
+    else strcpy(s[1],italian?"Leggo RSSI...":"Reading RSSI...");
     switch (m->action) {
-    case TUNE_UP: snprintf(s[6],17,"Hold: +%s",labels[m->step]); break;
-    case TUNE_DOWN: snprintf(s[6],17,"Hold: -%s",labels[m->step]); break;
-    case STEP_SIZE: snprintf(s[6],17,"Hold: step %s",labels[m->step]); break;
-    case DEFAULT_FREQ: strcpy(s[6],"Hold: default"); break;
-    case DISCARD: strcpy(s[6],"Hold: discard"); break;
+    case TUNE_UP: snprintf(s[6],17,italian?"Tieni: +%s":"Hold: +%s",labels[m->step]); break;
+    case TUNE_DOWN: snprintf(s[6],17,italian?"Tieni: -%s":"Hold: -%s",labels[m->step]); break;
+    case STEP_SIZE: snprintf(s[6],17,italian?"Passo: %s":"Hold: step %s",labels[m->step]); break;
+    case DEFAULT_FREQ: strcpy(s[6],italian?"Tieni: riprist.":"Hold: default"); break;
+    case DISCARD: strcpy(s[6],italian?"Tieni: annulla":"Hold: discard"); break;
     case CLEAR_HISTORY:
-        strcpy(s[6],"Clear history");
-        strcpy(s[7],"Hold to erase");
+        strcpy(s[6],italian?"Svuota storico":"Clear history");
+        strcpy(s[7],italian?"Tieni: cancella":"Hold to erase");
         return;
     }
-    strcpy(s[7],"Tap next 2x save");
+    strcpy(s[7],italian?"Premi/2x salva":"Tap next 2x save");
+}
+
+void menu_screen(const Menu *m, const ScopeView *v, const char *message, Screen s) {
+    menu_screen_language(m,v,message,s,false);
 }

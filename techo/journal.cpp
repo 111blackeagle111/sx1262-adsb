@@ -17,6 +17,7 @@ struct Log { const char *file, *previous; unsigned limit; };
 static const Log packets={"/adsb-packets","/adsb-packets.1",18};
 static const Log power={"/adsb-power","/adsb-power.1",4};
 static const char *marker="/adsb-erase", *dial="/adsb-hz";
+static const char *language="/adsb-lang";
 static lfs_t *fs;
 
 static bool remove_file(const char *path) {
@@ -40,6 +41,11 @@ bool journal_clear(void) {
 }
 bool journal_dial(uint32_t hz) {
     return write_file(dial,&hz,sizeof(hz),LFS_O_TRUNC);
+}
+
+bool journal_language(bool italian) {
+    uint8_t value=italian?1:0;
+    return write_file(language,&value,sizeof(value),LFS_O_TRUNC);
 }
 
 static bool read_log(const char *path, bool dump) {
@@ -71,7 +77,7 @@ static bool read_log(const char *path, bool dump) {
     return lfs_file_close(fs,&f)==0 && bytes==0;
 }
 
-bool journal_begin(uint32_t *hz) {
+bool journal_begin(uint32_t *hz, bool *italian) {
     /* The stock begin() formats after a mount error. Only offer it a blank
      * region: an unreadable filesystem may contain somebody's field logs. */
     if (!InternalFS.Adafruit_LittleFS::begin()) {
@@ -88,6 +94,11 @@ bool journal_begin(uint32_t *hz) {
         uint32_t value;
         if (lfs_file_read(fs,&file,&value,sizeof(value))==sizeof(value) &&
             value>=MIN_HZ && value<=MAX_HZ) *hz=value;
+        lfs_file_close(fs,&file);
+    }
+    if (!lfs_file_open(fs,&file,language,LFS_O_RDONLY)) {
+        uint8_t value[2];
+        if (lfs_file_read(fs,&file,value,sizeof(value))==1 && value[0]<=1) *italian=value[0]==1;
         lfs_file_close(fs,&file);
     }
     return read_log(packets.previous,false) && read_log(packets.file,false);
