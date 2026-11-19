@@ -157,21 +157,26 @@ static void standby_text(const char *label, int y, int size) {
     panel.print(label);
 }
 
+static void draw_formation_jet(int x, int y) {
+    panel.fillTriangle(x,y,x-3,y+10,x+3,y+10,WHITE);
+    panel.fillRect(x-2,y+8,5,19,WHITE);
+    panel.fillTriangle(x-2,y+10,x-13,y+20,x-2,y+17,WHITE);
+    panel.fillTriangle(x+2,y+10,x+13,y+20,x+2,y+17,WHITE);
+    panel.fillTriangle(x-2,y+20,x-7,y+27,x-2,y+25,WHITE);
+    panel.fillTriangle(x+2,y+20,x+7,y+27,x+2,y+25,WHITE);
+}
+
 static void draw_standby(void) {
     panel.fillScreen(WHITE);
     panel.fillCircle(100,71,53,BLACK);
 
-    /* A top-down twinjet silhouette. Keep the swept wings and tail clear
-     * of the circle's edge at the panel's native resolution. */
-    panel.fillTriangle(100,33,94,51,106,51,WHITE);
-    panel.fillRoundRect(94,44,13,63,6,WHITE);
-    panel.fillTriangle(96,56,55,85,96,76,WHITE);
-    panel.fillTriangle(104,56,145,85,104,76,WHITE);
-    panel.fillRoundRect(74,70,7,15,3,WHITE);
-    panel.fillRoundRect(120,70,7,15,3,WHITE);
-    panel.fillTriangle(97,89,79,107,97,101,WHITE);
-    panel.fillTriangle(103,89,121,107,103,101,WHITE);
-    panel.fillTriangle(96,102,104,102,100,113,WHITE);
+    /* Frecce Tricolori motif with three smoke trails in monochrome. */
+    draw_formation_jet(100,30);
+    draw_formation_jet(72,52);
+    draw_formation_jet(128,52);
+    panel.fillRect(99,62,3,51,WHITE);
+    panel.fillRect(71,84,3,23,WHITE);
+    panel.fillRect(127,84,3,23,WHITE);
 
     standby_text("Standby",130,3);
     standby_text("Tap pad or",162,2);
