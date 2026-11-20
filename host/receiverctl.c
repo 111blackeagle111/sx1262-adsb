@@ -41,7 +41,7 @@ static bool command(int fd, bool dump, bool quiet) {
     const char *request=dump?"dump\n":"status\n";
     char line[2048];
     size_t used=0;
-    bool truncated=false;
+    bool invalid=false;
     long long deadline=milliseconds()+(dump?120000:15000), sent=0;
     while (milliseconds()<deadline) {
         long long now=milliseconds();
@@ -61,21 +61,23 @@ static bool command(int fd, bool dump, bool quiet) {
         for (ssize_t i=0; i<n; i++) {
             if (buf[i]=='\r') continue;
             if (buf[i]!='\n') {
-                if (used+1<sizeof(line)) line[used++]=buf[i];
-                else truncated=true;
+                unsigned char byte=(unsigned char)buf[i];
+                if (byte<0x20 || byte>0x7e || used+1>=sizeof(line)) invalid=true;
+                else line[used++]=buf[i];
                 continue;
             }
             line[used]=0;
             if (dump && !strncmp(line,"SXLOG ",6)) {
-                if (truncated || puts(line+6)==EOF) return false;
+                if (invalid || puts(line+6)==EOF) return false;
             }
-            if (dump && !strcmp(line,"SXEND")) return true;
+            if (dump && !strcmp(line,"SXEND")) return !invalid;
             if (!dump && !strncmp(line,"SXSTATUS ",9)) {
+                if (invalid) return false;
                 if (!quiet) puts(line);
                 return true;
             }
             used=0;
-            truncated=false;
+            invalid=false;
         }
     }
     return false;

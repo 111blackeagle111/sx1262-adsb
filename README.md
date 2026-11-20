@@ -1,6 +1,15 @@
 # ADS-B on the LilyGO T3-S3 and T-Echo
 
-Tired of waiting for LoRa messages? You are in the right place: this firmware turns the **LilyGO T3-S3** with an OLED and the **original LilyGO T-Echo** with an e-paper display into pocket aircraft receivers. Both use an unmodified SX1262 radio (no hardware modifications needed). Connect an antenna to the LoRa antenna connector (even the stock antenna works) and power the board by USB or battery. It listens on 1090 MHz for the ADS-B messages in which aircraft broadcast their identity, position and movement. The display shows the flight's callsign or the aircraft's six-character address in large type. As reports arrive, the board fills in altitude, speed, direction and coordinates. The sampler, decoder and flight display logic are written in C. You can retrieve the recordings over USB after an outing. Note: **the technical details used in order to turn the SX1262 into an ADSB receiver are quite interesting, check them later**.
+## Bilingual firmware for LilyGO receivers
+
+| Receiver | Firmware download | Guide and checksums |
+| --- | --- | --- |
+| **T-Deck Plus** · ESP32-S3, SX1262, 320 × 240 TFT | [Download the T-Deck Plus ZIP](https://github.com/111blackeagle111/sx1262-adsb/releases/download/tdeck-plus-v0.1.0/tdeck-plus-adsb.zip) | [Installation, features and SHA-256](https://github.com/111blackeagle111/sx1262-adsb/releases/tag/tdeck-plus-v0.1.0) |
+| **Original T-Echo** · nRF52840, SX1262, 200 × 200 e-paper | [Download the T-Echo UF2](https://github.com/111blackeagle111/sx1262-adsb/releases/download/techo-v0.1.0/techo-adsb.uf2) | [Installation, features and SHA-256](https://github.com/111blackeagle111/sx1262-adsb/releases/tag/techo-v0.1.0) |
+
+Both releases support English and Italian. The T-Deck Plus includes a traffic map, microSD replay and an RF activity indicator. The T-Echo includes manual standby with the Frecce Tricolori screen and can clear packet history when internal storage is nearly full. Built on [Salvatore Sanfilippo’s sx1262-adsb receiver](https://github.com/antirez/sx1262-adsb).
+
+This firmware turns the **LilyGO T-Deck Plus** with its 320 × 240 color display, the **LilyGO T3-S3** with an OLED and the **original LilyGO T-Echo** with an e-paper display into pocket aircraft receivers. All three use an unmodified SX1262 radio (no hardware modifications needed). Connect an antenna to the LoRa antenna connector (even the stock antenna works) and power the board by USB or battery. It listens on 1090 MHz for the ADS-B messages in which aircraft broadcast their identity, position and movement. The display shows the flight's callsign or the aircraft's six-character address in large type. As reports arrive, the board fills in altitude, speed, direction and coordinates. The sampler, decoder and flight display logic are written in C. You can retrieve the recordings over USB after an outing. Note: **the technical details used in order to turn the SX1262 into an ADSB receiver are quite interesting, check them later**.
 
 <img src="docs/receivers-outdoors.jpg" width="560" alt="Two handheld receivers outdoors. The T-Echo's e-paper screen shows flight RYR9JW and the T3-S3's OLED shows aircraft 4BAA79.">
 
@@ -16,12 +25,13 @@ These are screenshots from the board. The upper pair shows the same packet three
 
 ## Install without compiling
 
-| Board | Download | What you need |
-| --- | --- | --- |
-| Original T-Echo, nRF52840, SX1262, 1.54-inch monochrome e-paper | [T-Echo firmware (.uf2)](firmware/techo-adsb.uf2) | USB data cable and the board's UF2 drive |
-| T3-S3, ESP32-S3, SX1262, monochrome OLED, 4 MB flash | [T3-S3 firmware and installer (.zip)](firmware/t3s3-adsb.zip) | USB data cable, Python 3 and esptool |
+Choose the matching download above for the T-Deck Plus or original T-Echo. The T3-S3 with a 4 MB flash and monochrome OLED has a [separate ZIP and installer](firmware/t3s3-adsb.zip).
 
-On GitHub, use **Download raw file** to save a firmware download. [SHA-256 checksums](firmware/SHA256SUMS) · [Third-party notices](firmware/NOTICES.txt)
+The T-Deck Plus release uses ESP-IDF 5.5.5. The application reports build ID `8469bac`. Its firmware sources are available under [tag tdeck-plus-v0.1.0](https://github.com/111blackeagle111/sx1262-adsb/tree/tdeck-plus-v0.1.0). The [T-Echo source and guide](https://github.com/111blackeagle111/sx1262-adsb/tree/techo-v0.1.0) accompany the bilingual UF2. [Package checksums](firmware/SHA256SUMS) · [Third-party notices](firmware/NOTICES.txt)
+
+### T-Deck Plus
+
+Extract the T-Deck ZIP and follow its **README.txt**. It contains the bootloader, the 16 MB target's partition table and the receiver application. Enter BOOT by holding the trackball, pressing and releasing RESET, then releasing the trackball. Check the detected flash size and save and verify the original 16 MB before replacing another firmware. [Step-by-step T-Deck installation and restore commands](install/T-Deck-Plus.txt)
 
 ### T-Echo
 
@@ -37,7 +47,7 @@ The UF2 writes application flash at `0x26000`. Updates preserve the bootloader, 
 2. Connect USB. Hold **BOOT**, tap and release **RESET**, then release **BOOT**. Close any serial monitor.
 3. Run `python install.py`. It finds a single Espressif USB port automatically. With several devices connected, use `python install.py --port COM5` or supply the actual port on your computer. When the write verifies, tap **RESET** if the OLED hasn't started.
 
-When replacing other firmware, the installer first reads all 4 MB of flash into a timestamped backup in the current folder and verifies it against the board. It then clears the area the new receiver will use for recordings. When updating an existing receiver, it writes only the bootloader, partition table and application. The frequency and recordings survive. [Installer source](install/t3s3.py)
+The installer checks that the connected chip reports 4 MB of flash. When replacing other firmware, it then reads all 4 MB of flash into a timestamped backup in the current folder and verifies it against the board. It then clears the area the new receiver will use for recordings. When updating an existing receiver, it writes only the bootloader, partition table and application. The frequency and recordings survive. [Installer source](install/t3s3.py)
 
 ## Supported hardware
 
@@ -80,7 +90,7 @@ arduino-cli core install adafruit:nrf52@1.3.0 --additional-urls "$INDEX"
 ./techo/build.sh
 ```
 
-Copy `build-techo/techo-adsb.uf2` to `TECHOBOOT`. The script fetches the pinned LilyGO checkout for its Adafruit GFX drawing library. Set `LILYGO_T_ECHO` to use an existing checkout. The two boards compile the same radio program, demodulator, CRC checks, CPR and packet-card logic. The T-Echo keeps its calibration tables in flash and reserves space for 12 deferred captures. A second queue holds 16 fresh radio captures. In sustained noise this queue can fill faster than the Nordic can decode it. The USB `status` counter `queue_full` counts captures lost this way. [T-Echo board code](techo) · [Adafruit nRF52 core](https://github.com/adafruit/Adafruit_nRF52_Arduino/tree/1.3.0) · [T-Echo e-paper driver](techo/paper.cpp)
+Copy `build-techo/techo-adsb.uf2` to `TECHOBOOT`. The script fetches the pinned LilyGO checkout for its Adafruit GFX drawing library. Set `LILYGO_T_ECHO` to use an existing checkout. The three boards compile the same radio program, demodulator, CRC checks, CPR and packet-card logic. The T-Echo keeps its calibration tables in flash and reserves space for 12 deferred captures. A second queue holds 16 fresh radio captures. In sustained noise this queue can fill faster than the Nordic can decode it. The USB `status` counter `queue_full` counts captures lost this way. [T-Echo board code](techo) · [Adafruit nRF52 core](https://github.com/adafruit/Adafruit_nRF52_Arduino/tree/1.3.0) · [T-Echo e-paper driver](techo/paper.cpp)
 
 ### T3-S3
 
@@ -117,7 +127,68 @@ idf.py -p "$PORT" flash monitor
 
 If the console says `waiting for download`, tap **RESET** with BOOT released. The OLED opens in **LIVE**. On USB, `SXREADY` means the radio passed its trigger checks and is armed. Type `status` and press Return to check it again. Exit the ESP-IDF monitor with **Ctrl+]**. [Espressif's USB reset notes](https://docs.espressif.com/projects/esptool/en/latest/esp32s3/troubleshooting.html)
 
-For **later updates** to this receiver, run the build and flash commands only. They preserve the journal and saved frequency. To **restore the previous firmware**, enter the ROM loader and run `python -m esptool --chip esp32s3 -p "$PORT" write_flash 0 "$BACKUP"` with the verified backup file, then tap RESET.
+### T-Deck Plus color display and USB console
+
+This experimental ESP32-S3 target uses the SX1262 in receive mode on the 1090 MHz ADS-B channel. It starts at the same 1089.800 MHz receiver dial as the T3-S3. The 320 × 240 TFT, SX1262 and microSD share the SPI bus. The display sends small strips that changed since the last frame. [LilyGO T-Deck Plus pin mapping](https://github.com/Xinyuan-LilyGO/documentation/blob/master/en/products/t-deck-series/t-deck-plus/index.md#pin-mapping) · [Meshtastic radio wiring and TCXO](https://github.com/meshtastic/firmware/blob/master/variants/esp32s3/t-deck/variant.h)
+
+Identify the RF variant from the SKU on the order or packaging. LilyGO lists H736-A and H736-03 for 868 MHz, H737-A and H737-03 for 915 MHz, H755-A for 433 MHz and H772-01 for 920 MHz. The USB device name and the Meshtastic region setting identify the board and configured region respectively. Reception at 1090 MHz depends on the RF front end and antenna. [LilyGO T-Deck Plus variants](https://lilygo.cc/products/t-deck-plus-meshtastic)
+
+Build with ESP-IDF 5.5.5 using a dedicated build directory. This target uses 16 MB flash and octal PSRAM. Back up and verify the original 16 MB flash before flashing the experimental image. For manual download mode, hold the trackball button while pressing and releasing RST, then release the trackball. [Espressif flash backup and verification commands](https://docs.espressif.com/projects/esptool/en/latest/esp32s3/esptool/basic-commands.html)
+
+```sh
+idf.py -B build-tdeck-plus -DADS_B_TDECK_PLUS=ON build
+```
+
+The T-Deck Plus starts in English until you save a language preference. Open **System → Language** (Italian: **Sistema → Lingua**), roll to **English** or **Italiano**, then click to save. Hold to cancel. The setting applies immediately and survives a restart or power cycle. Both languages use the same local ISO date and time.
+
+The startup screen asks you to confirm or enter the local date and time, then opens **Traffic list**. Roll up or down to select an aircraft, then click to open **Flight details**. In the traffic list, the first horizontal roll highlights **Map**. Roll left or right to choose **Map**, **SD Replay** or **System**, then click to open it. Rolling up or down from the buttons returns the selection to the aircraft. These three buttons are also available while waiting for the first aircraft. Holding and releasing the trackball on the list highlights **System** for confirmation. Once you open **System**, you can read the estimated battery voltage, open **RF reception**, or adjust the backlight and dial. Roll to adjust and press to return to the menu. The ADC measures a shared power rail. A reading above 4.60 V and up to 5.50 V is shown as USB power. Brightness and tuning changes apply immediately and reset on reboot. [LilyGO power schematic](https://github.com/Xinyuan-LilyGO/T-Deck/blob/master/schematic/schematic.pdf)
+
+To open **Traffic map**, highlight **Map** in the list and click. In **Pan**, roll in four directions to pan. A short press switches to **Zoom**, where up and down change one zoom level around the current center. Press again to pan. In **System** and on the live map, **Hold to return to LIVE** means to hold the trackball for about one second and release to return to live reception. On a Replay SD map the same gesture returns to the recorded flight card. The map shows the receiver's position once the GPS has a current fix and plots aircraft with a recent ADS-B position. Before a fix, the initial view is around Rome. Map tiles use `maps/osm/z/x/y.png` or `map/z/x/y.png` on a FAT32 card, 256 × 256 pixels with no interlacing, at zoom levels 1–13. The tiles are read on demand in the SD task and cached in PSRAM. [Meshtastic offline tile layout](https://github.com/meshtastic/device-ui/blob/master/maps/README.md)
+
+Press **L** or choose **System → Screen off** to put the TFT and its backlight to sleep while reception and SD logging continue. Press the trackball or any keyboard key to wake the display on the same page at the previous brightness. The wake input is consumed. USB accepts `screen on`, `screen off` and `screen status`.
+
+While waiting for the first aircraft, **Listening** shows the RF capture count since boot. The amber dot beside the count label blinks once per second while the receiver responds to polling, even if the count is steady. The operating screens show estimated battery percentage or USB power, and **System** shows the voltage estimate. Under **System**, select **GPS reception** to see the fix, satellites used, valid NMEA count, and UART speed. The GPS monitor listens on GPIO44 at 38400 or 9600 baud and uses the read-only UBX-MON-VER request to identify compatible receivers. The `gps version` console command repeats the request. Bluetooth LE is disabled in this firmware. [LilyGO T-Deck Plus pin mapping](https://wiki.lilygo.cc/products/t-deck-series/t-deck-plus/#pin-mapping) · [u-blox MIA-M10Q data sheet](https://content.u-blox.com/sites/default/files/documents/MIA-M10Q_DataSheet_UBX-22015849.pdf)
+
+Use `raw on` and `raw off` over USB to start and stop exporting T-Deck RSSI captures. Each `SXRAW` line contains the boot ID, capture number, previous and current poll times in milliseconds since boot, receiver dial in Hz, noise floor and trigger in half-dB RSSI codes, queue decision and 256 hexadecimal sample bytes. Queue decisions are `Q` for queued, `F` for filtered and `D` for dropped because the decoder queue was full. Raw export has separate loss counters, `raw_queue_drops` and `raw_usb_drops`. The `status` reply on both devices includes `uptime_ms` for aligning T-Deck captures with T-Echo journal records. USB round-trip time and radio polling limit the precision of that comparison.
+
+Insert a FAT32 microSD before boot to log live CRC-valid DF17 messages in `SXADSB/XXXXXXXX.JSL`, where `XXXXXXXX` is the boot ID. Each JSON line uses the T-Echo journal format and contains all 14 message bytes, the dial frequency, capture times since boot and the 256 RSSI samples for that message. Filtered or undecoded captures remain available via `raw on` over USB. Reception also works with the card absent, and the firmware never formats the card. SD writes run in a separate task and can still contend for the shared SPI bus. Over USB, `sd status` shows the number of synced records and drops from the SD queue. Run `sd stop` before removing the card. The receiver drains results already queued when the stop was requested. In `sd status`, `stopped` means the journal synced and the card was unmounted. The state `stopped_error` means the card was unmounted after a data error. An unmount failure produces `error` and prevents a software restart. Reboot with the card inserted to start a new session. [Espressif shared SPI bus guide](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/peripherals/sdspi_share.html)
+
+In the traffic list, highlight **SD Replay** with the trackball or the **R** key, then click to open it. You can also open **SD Replay** from **System**. Choose a closed `.JSL` journal and click. The replay list shows all the aircraft in the recording, with the most recently received first. Open a flight to see the last available measurements in aeronautical and metric units and the local ISO time of the last message when recorded. If the decoder found a valid position for that aircraft, **Open on map** centers the map on its last recorded position and shows the time of that fix when recorded. Hold and release the trackball to go back one screen, or press **R** to return to live traffic. The radio continues receiving into the live history and journal. The picker shows up to 32 files and loads up to 8192 valid DF17 messages per recording. Over USB, `replay sd` opens the picker, `replay play NAME.JSL` opens a matching file, and `replay status` reports the selected aircraft and timestamps.
+
+To copy a closed journal without removing the card, send `sd read <boot-id> <offset>` over USB. Use the eight hexadecimal digits of the filename and a decimal byte offset starting at zero. Each `SXSDREAD` reply with `state=ok` returns up to 512 original file bytes in `data` as hexadecimal. Decode those bytes, advance the offset by their length, and repeat until `state=eof`. The SD reader leaves live reception and logging active. To copy the current journal, use **System → Restart** first and request the previous boot ID after startup.
+
+At startup, **Date and time** asks for the local date and time. If the clock is still running after **System → Restart**, **Confirm** keeps its time including seconds. After a power-on reset, the screen offers the last confirmed time saved in flash. Check it and choose **Confirm** or **Edit**. On first use or to edit, enter 12 digits in `YYYYMMDDHHMM` order. Hold **sym** for the digit keys and press Enter to save. With the trackball, click a digit to advance and click **Save** to confirm. **System → Date and time** also opens the editor. Over USB use `time set YYYYMMDDHHMM` and `time status`. The receiver keeps listening during setup. A running clock adds the local ISO `local_time` field to new captures. Use **System → Restart** or `restart` on USB for a restart that closes the SD journal cleanly. [ESP32-S3 system time](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/system/system_time.html)
+
+With a detected MIA-M10Q, a short trackball press in **GPS reception** requests software standby or wakes the receiver. Hold the trackball to return to **System**. The console also accepts `gps standby` and `gps wake`. The application checks that UART output stops and resumes, and wakes the receiver on reboot. [u-blox MIA-M10Q integration manual](https://content.u-blox.com/sites/default/files/documents/MIA-M10Q_IntegrationManual_UBX-21028173.pdf)
+
+**GPS reception** polls UBX-NAV-SAT every two seconds while open. It shows acquired signals and satellites used for navigation by constellation. Dashes indicate that a recent report is unavailable, while zero is a reported count. The USB command `gps satellites` prints the latest table as acquired/used pairs. [u-blox M10 SPG 5.10 interface description](https://content.u-blox.com/sites/default/files/u-blox-M10-SPG-5.10_InterfaceDescription_UBX-21035062.pdf)
+
+Open the USB serial console at 115200 baud. `SXREADY` and `status` with `ready=1` confirm that the sampler passed its self-test and was armed. Live ADS-B reception is confirmed by a line beginning with `SXADSB` containing `df=17 crc=ok` and a 28-digit hexadecimal `word`. `status` also reports the number of decoded DF17 messages, raw captures, radio retries and queue saturation.
+
+Use `tune 1090000000` to try a different dial setting. The console accepts 1089000000 to 1091000000 Hz. `status` reports the applied dial and any rejected frequency. The firmware starts at 1089800000 Hz after a reboot.
+
+USB commands `ui left`, `ui right`, `ui up`, `ui down`, `ui open` and `ui hold` mirror the trackball gestures. In LIVE, `status` reports `list_focus` as 0 for aircraft, 1 for Mappa, 2 for Replay SD or 3 for Sistema. The console also accepts `ui list`, `ui rf`, `ui system`, `ui next` and `ui prev`. Use `ui map` and `map status` to open and inspect the map directly. Host tests replay recorded captures through the decoder and the same RGB565 renderer used by the TFT. On 16 labelled T-Echo transmissions at 1090 MHz, the shared decoder recovers 10 exact 112-bit words, up from 5 before the whole-reply timing update. It also recovers the independently recorded word for block 871. On ESP32-S3, USB `status` reports `decoder_ram=internal` or `decoder_ram=psram` for the decoder workspace. The host build uses the zlib development library for tile decoding. [Recorded samples and expected words](host/fixtures/techo-1090-quiet.tsv.gz) · [Regression checks](host/check.sh)
+
+```sh
+cmake -S host -B host/build
+cmake --build host/build
+ctest --test-dir host/build --output-on-failure
+sh host/check-tdeck.sh host/build/replay host/build/test_tdeck build-tdeck-plus/ui-preview
+```
+
+For a hardware replay build, pass the generated header as `-DADS_B_TDECK_REPLAY="$PWD/build-tdeck-plus/ui-preview/tdeck_replay_data.h"` in a separate build directory. On that build, `replay on` shows recorded traffic marked **REPLAY**, and `replay off` returns to live reception. The standard build starts and stays in live mode.
+
+To **restore the previous firmware**, enter the ROM loader and run `python -m esptool --chip esp32s3 -p "$PORT" write_flash 0 "$BACKUP"` with the verified backup file, then tap RESET.
+
+### Package the three downloads
+
+After building the standard T3-S3, T-Deck Plus and T-Echo targets above, run the following from the repository root. Supply the actual build directories if they differ. The command validates board selections, flash settings, partition tables and the application-only UF2 before replacing the downloads and checksums in `firmware/`.
+
+```sh
+python3 install/package.py --t3-build build --tdeck-build build-tdeck-plus --techo-build build-techo
+(cd firmware && sha256sum -c SHA256SUMS)
+python3 -B install/test_package.py
+```
 
 ## Use the receiver
 
@@ -126,6 +197,10 @@ For **later updates** to this receiver, run the build and flash commands only. T
 | Browse the last 64 packet cards | Tap once per older packet |
 | Return to live reception | Hold for 0.8 seconds |
 | Open frequency settings | Double-click |
+
+On the T-Echo, hold the top capacitive button and count aloud **1001 1002 1003**, then release it to switch the display light on or off. The light changes when you release the sensor: if it was on, it turns off; if it was off, it turns on. To show or hide the battery icon, hold the sensor and count aloud **1001 1002 1003 1004 1005 1006 1007 1008**. As soon as the icon disappears or reappears, the command has been recognized and you can release the sensor. The longer gesture changes battery visibility once and leaves the light unchanged. These counting instructions give a comfortable margin over the firmware's unchanged two-second light and five-second battery thresholds. Brief touches do nothing. The light starts off and the battery icon starts visible after a restart. ADS-B reception and display updates continue with either setting. When the battery is hidden, the first text row returns to its original position.
+
+The T-Echo shows an estimated battery percentage at the top right, updated every 30 seconds while running on battery. It averages eight voltage readings from the board's battery divider and estimates LiPo charge from the voltage. The full endpoint is an ADC reading of 4.14 V, based on this receiver showing 91% with the previous curve after charging had finished. This empirical adjustment is approximate. An out-of-range reading shows `--%`. With USB power connected, it shows `USB` and does not measure or display a percentage: LilyGO documents that the ADC battery reading is inaccurate while charging. USB detection also works with a charger without a data connection. The red charging LED stays on during charging and turns off when fully charged; the firmware cannot read that LED's status. Type `battery` over USB to inspect the power source; `mv=0 percent=-1` means the battery estimate is unavailable on USB. [LilyGO charging and LED documentation](https://github.com/Xinyuan-LilyGO/T-Echo/blob/main/README.MD#charger-led-status)
 
 ### T-Echo e-paper refresh
 
@@ -175,6 +250,16 @@ The graph plots the last 2.56 seconds on a fixed scale from −120 to −40 dBm.
 When a packet-shaped burst arrives, the graph shows a close-up of **192 µs of signal**, held for three seconds. A label such as `Hold -75 dBm` gives the peak of that burst. The screen then returns to the background signal level, which continued sampling during the hold. Even in busy traffic you get at least one second of live signal between holds. Retuning clears the held trace immediately.
 
 The display looks for a 36 µs interval at least 6 dB above the measured floor and the average at each end of the capture. This lets you see a burst even when its bits are too weak to decode. An aircraft card still requires a valid message.
+
+### T-Echo GPS standby and console observer
+
+The T-Echo requests GPS standby at application startup by holding the L76K WAKEUP signal (P1.02/34) low. This stops satellite acquisition and navigation, rather than disconnecting power. The shared peripheral supply and GPS reset are left alone. The [Quectel hardware manual](https://files.waveshare.com/upload/d/db/Quectel_L76K_Hardware_Design_V1.0.pdf) documents standby through WAKEUP; its specified current is not a measurement on this board.
+
+In a USB serial monitor at 115200 baud, type `gps` and press Return. The first call starts a receive-only observer at 9600 baud; wait a few seconds and repeat `gps` to read its status. Observation does not wake the GPS, send serial commands or drive its reset or command input. The observer runs in a separate task and starts only when requested. Type `gps stop` to release its UART and task; this stops observation without changing the requested GPS mode. Observation starts afresh on the next `gps` command. For a comparison, `gps wake` releases WAKEUP and `gps standby` holds it low again; both also start observation. These mode changes last until the next application restart, which always requests standby.
+
+`requested=standby/continuous` reports the requested mode and `wake_level` reads back the MCU-side WAKEUP signal. These are separate from observed NMEA activity. After `gps standby`, allow at least five seconds for previous observations to expire and compare the counters over time; receiving no new bytes supports the documented standby behavior, but does not measure current or establish complete power removal.
+
+`SXGPS` reports `activity=active` only after receiving a valid NMEA sentence within the last five seconds. `no_data` means no valid sentence has been received yet, and `no_recent_data` means the last one is older than five seconds. Neither silence nor `monitor=0` proves that the GPS is off. `bytes` counts received bytes, `nmea` counts sentences with valid checksums, and `last_ms` is the age of the last valid sentence (`-1` before the first). `fix=yes/no` is the module's latest RMC/GGA fix report; `satellites` is the GGA count of satellites used, with `-1` for unknown. Fix and satellite reports also expire after five seconds. `invalid` counts rejected sentences and `overflow` counts discarded oversized or non-ASCII input lines; these are not a measurement of all UART byte loss. GPS activity proves consumption, but this command does not measure current. The observer does not add GPS information to the display or change ADS-B position decoding.
 
 ## Retrieve or replay recordings
 

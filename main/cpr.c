@@ -44,10 +44,10 @@ static double nearest_cell(double reference, double step, unsigned code) {
     return step*(floor(reference/step-fraction+.5)+fraction);
 }
 
-void cpr_update(CprTrack *t, const uint8_t w[14], int64_t ms) {
+bool cpr_update(CprTrack *t, const uint8_t w[14], int64_t ms) {
     int tc=w[4]>>3, odd=(w[6]>>2)&1;
     bool surface=tc>=5 && tc<=8;
-    if (w[0]>>3!=17 || !(surface || (tc>=9 && tc<=18) || (tc>=20 && tc<=22))) return;
+    if (w[0]>>3!=17 || !(surface || (tc>=9 && tc<=18) || (tc>=20 && tc<=22))) return false;
     if (surface!=t->surface) {
         memset(t->sample,0,sizeof(t->sample));
         t->surface=surface;
@@ -61,20 +61,21 @@ void cpr_update(CprTrack *t, const uint8_t w[14], int64_t ms) {
     if (!paired) {
         /* A surface grid spans only 90 degrees. It too needs an established
          * reference. Never substitute a presumed location for this radio. */
-        if (!t->fixed || ms<t->fix_ms || ms-t->fix_ms>60000) return;
+        if (!t->fixed || ms<t->fix_ms || ms-t->fix_ms>60000) return false;
         double span=surface?90.0:360.0;
         lat=nearest_cell(t->lat,span/(60-odd),s->lat);
-        if (fabs(lat)>90) return;
+        if (fabs(lat)>90) return false;
         int ni=zones(lat)-odd;
         lon=nearest_cell(t->lon,span/(ni>0?ni:1),s->lon);
         /* Check a local continuation against elapsed time. A 1 NM margin
          * covers rounding and nearby reports. 1200 knots allows 1 NM/3 s. */
         double dy=(lat-t->lat)*60;
         double dx=remainder(lon-t->lon,360)*60*cos((lat+t->lat)*pi/360);
-        if (hypot(dx,dy)>1+(ms-t->fix_ms)/3000.0) return;
+        if (hypot(dx,dy)>1+(ms-t->fix_ms)/3000.0) return false;
     }
     t->lat=lat;
     t->lon=lon-360*floor((lon+180)/360);
     t->fix_ms=ms;
     t->fixed=true;
+    return true;
 }

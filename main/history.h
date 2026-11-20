@@ -19,4 +19,14 @@ void history_older(void);
 void history_live(void);
 CardView history_screen(Screen screen, uint32_t boot, int64_t now);
 bool card_valid(const Card *c);
+/* Live aircraft view for the color display, in descending reception order. */
+typedef struct {
+    uint32_t icao;
+    int64_t seen;
+    char callsign[9], altitude[32], speed[32], heading[17];
+    bool fixed;
+    double lat, lon;
+} AircraftInfo;
+unsigned history_aircraft(uint32_t boot, uint32_t addresses[CARDS]);
+bool history_aircraft_info(uint32_t boot, uint32_t icao, int64_t now, AircraftInfo *info);
 #endif

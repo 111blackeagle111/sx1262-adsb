@@ -15,6 +15,8 @@ for set_name in garden-and-bench bench-test morning techo-bench; do
     "$replay" < "$tmp/input" > "$tmp/results"
     cut -d' ' -f1,2 "$tmp/results" > "$tmp/actual"
     diff -u "$tmp/expected" "$tmp/actual"
+    "$replay" --busy < "$tmp/input" > "$tmp/filtered"
+    diff -u "$tmp/results" "$tmp/filtered"
     printf '%s: %d captures, %d packets\n' "$set_name" "$(wc -l < "$tmp/rows")" "$(wc -l < "$tmp/actual")"
 done
 
@@ -27,3 +29,28 @@ cat > "$tmp/expected" <<'END'
 END
 diff -u "$tmp/expected" "$tmp/actual"
 printf 'illustrated position pair: 2 captures, 2 packets\n'
+
+# This timed coax packet first failed on the T-Echo. The input contains RSSI
+# only. Its independent RTL-SDR word belongs on the comparison side.
+"$replay" < "$here/../docs/1090-block-871.tsv" > "$tmp/results"
+cut -d' ' -f1,2 "$tmp/results" > "$tmp/actual"
+echo '871 8d000000c8540afe9ffe693c94ea' > "$tmp/expected"
+diff -u "$tmp/expected" "$tmp/actual"
+printf 'block 871: exact 112-bit word recovered\n'
+
+# All sixteen arrivals have an independent transmitted word. Future decoders
+# may recover more of them. Check every returned word, and keep the ten that
+# motivated the whole-reply timing pass as a regression floor.
+gzip -dc "$here/fixtures/techo-1090-quiet.tsv.gz" > "$tmp/rows"
+cut -f1-5 "$tmp/rows" > "$tmp/input"
+"$replay" < "$tmp/input" > "$tmp/results"
+awk 'NR==FNR { expected[$1]=$6; next }
+     !($1 in expected) || expected[$1]!=$2 || seen[$1]++ { bad=1 }
+     END {
+         n=split("1 3 5 6 7 8 9 12 13 14",required," ")
+         for (i=1;i<=n;i++) if (!seen[required[i]]) bad=1
+         exit bad
+     }' "$tmp/rows" "$tmp/results"
+"$replay" --busy < "$tmp/input" > "$tmp/filtered"
+diff -u "$tmp/results" "$tmp/filtered"
+printf 'techo-1090-quiet: %d exact packets from %d captures\n' "$(wc -l < "$tmp/results")" "$(wc -l < "$tmp/rows")"

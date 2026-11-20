@@ -1,0 +1,26 @@
+LilyGO T-Deck Plus ADS-B receiver · ESP32-S3, SX1262, 16 MB flash, 320 × 240 TFT
+
+Extract the ZIP into a writable folder. Keep bootloader.bin, partitions.bin and receiver.bin together. These three files are built for the T-Deck Plus. The receiver starts at 1089.800 MHz. The original firmware can be restored from a verified backup of all 16 MB.
+
+1. Install Python 3 and esptool. Open a terminal in the extracted folder. Use python3 on Linux/macOS or py on Windows if needed.
+
+    python -m pip install "esptool>=4.7,<6"
+
+2. When updating this ADS-B receiver with a microSD inserted, enter sd stop in its USB serial console and wait for SXSD state=stopped. Close the console. Connect the board with a USB data cable. Hold the trackball button, press and release RESET, then release the trackball. Replace PORT in each command with the serial port that appears, such as /dev/ttyACM0 or COM5.
+
+    python -m esptool --chip esp32s3 --port PORT --before no_reset --after no_reset flash_id
+
+3. Continue only if the identified flash size is 16 MB and the board is physically a T-Deck Plus. Before replacing another firmware, save the full flash. Choose a new backup filename so an earlier backup is preserved. Use the same filename for verification. Continue after verification succeeds. Store that file separately.
+
+    python -m esptool --chip esp32s3 --port PORT --before no_reset --after no_reset read_flash 0x0 0x1000000 T-Deck-Plus-before-ADSB.bin
+    python -m esptool --chip esp32s3 --port PORT --before no_reset --after no_reset verify_flash 0x0 T-Deck-Plus-before-ADSB.bin
+
+4. Write the three images with their offsets. This command also verifies the written images. If bootloader mode was lost between commands, repeat the trackball and RESET sequence in step 2.
+
+    python -m esptool --chip esp32s3 --port PORT --before no_reset --after hard_reset write_flash --flash_mode dio --flash_freq 80m --flash_size 16MB 0x0 bootloader.bin 0x8000 partitions.bin 0x10000 receiver.bin
+
+5. Tap RESET once with the trackball released if the application has not started. Confirm or edit the local date and time on the display. Hold sym for the digit keys, then press Enter to save. The main screen is Traffic list. To switch languages, open System > Language, roll to English or Italiano and click to save. Hold to cancel. The saved language is used at the next startup. In a USB serial console at 115200 baud, status should report ready=1 and dial=1089800000. With a FAT32 microSD inserted, sd status reports the journal state.
+
+To restore the original firmware, enter bootloader mode as in step 2 and write your verified full backup from address zero. Replace the filename below with your actual backup.
+
+    python -m esptool --chip esp32s3 --port PORT --before no_reset --after hard_reset write_flash 0x0 T-Deck-Plus-before-ADSB.bin

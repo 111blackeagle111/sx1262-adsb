@@ -3,8 +3,12 @@
  * appear on an older card, and a callsign can outlive a speed reading. */
 #include "history.h"
 #include "cpr.h"
+#if defined(ADS_B_TDECK_PLUS) || defined(TDECK_REPLAY_HOST_TEST)
+#include "tdeck_replay.h"
+#endif
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct {
@@ -43,40 +47,43 @@ bool card_valid(const Card *c) {
            modes_crc(c->word,c->length)==0;
 }
 
-void history_add(Card c) {
-    if (!card_valid(&c)) return;
-    for (unsigned j=0; j<live.count; j++) {
-        const Card *old=&live.cards[j];
+static bool history_insert(History *h, uint32_t boot, Card c) {
+    if (!card_valid(&c)) return false;
+    for (unsigned j=0; j<h->count; j++) {
+        const Card *old=&h->cards[j];
         if (old->boot==c.boot && old->ms==c.ms && old->length==c.length &&
-            !memcmp(old->word,c.word,c.length)) return;
+            !memcmp(old->word,c.word,c.length)) return false;
     }
-    unsigned i = live.count;
-    if (c.boot!=current_boot) {
+    unsigned i=h->count;
+    if (c.boot!=boot) {
         /* Imported cards can arrive while the current boot is already live. */
-        while (i && live.cards[i-1].boot==current_boot) i--;
+        while (i && h->cards[i-1].boot==boot) i--;
         for (unsigned j=0; j<i; j++) {
-            if (live.cards[j].boot!=c.boot) continue;
-            while (j<i && live.cards[j].boot==c.boot) j++;
+            if (h->cards[j].boot!=c.boot) continue;
+            while (j<i && h->cards[j].boot==c.boot) j++;
             i=j;
             break;
         }
     }
-    while (i && live.cards[i-1].boot==c.boot && live.cards[i-1].ms>c.ms) i--;
-    if (live.count == CARDS) {
+    while (i && h->cards[i-1].boot==c.boot && h->cards[i-1].ms>c.ms) i--;
+    if (h->count==CARDS) {
         if (!i) {
             /* A deferred decode can predate every card still on screen. */
-            remember_evicted(&live,&c);
-            if (!browsing) dirty=true;
-            return;
+            remember_evicted(h,&c);
+            return true;
         }
-        remember_evicted(&live,&live.cards[0]);
-        memmove(live.cards,live.cards+1,(--i)*sizeof(c));
+        remember_evicted(h,&h->cards[0]);
+        memmove(h->cards,h->cards+1,(--i)*sizeof(c));
     } else {
-        memmove(live.cards+i+1,live.cards+i,(live.count-i)*sizeof(c));
-        live.count++;
+        memmove(h->cards+i+1,h->cards+i,(h->count-i)*sizeof(c));
+        h->count++;
     }
-    live.cards[i] = c;
-    if (!browsing) dirty=true;
+    h->cards[i]=c;
+    return true;
+}
+
+void history_add(Card c) {
+    if (history_insert(&live,current_boot,c) && !browsing) dirty=true;
 }
 
 void history_older(void) {
@@ -202,24 +209,52 @@ static uint32_t address(const Card *c) {
 
 /* Apply only the fields actually carried by this packet. The selected
  * altitude is a target, so it can coexist with a measured vertical rate. */
-static void update_flight(Flight *f, const Card *c) {
+static bool update_flight(Flight *f, const Card *c, bool archived) {
     Fields p=fields(c);
     strcpy(f->fields.label,p.label);
     /* Keep a name through a continuous pass. After a long silence the
      * same airframe may have returned under a different flight number. */
     if (c->ms-f->seen>600000) f->fields.name[0]=0;
     if (*p.name) strcpy(f->fields.name,p.name);
-    if (p.height) { strcpy(f->fields.altitude,p.altitude); f->height_ms=c->ms; }
+    if (p.height && (!archived || p.altitude[0])) {
+        strcpy(f->fields.altitude,p.altitude);
+        f->height_ms=c->ms;
+    }
     if (p.motion) {
-        strcpy(f->fields.speed,p.speed);
-        strcpy(f->fields.angle,p.angle);
+        if (!archived || p.speed[0]) strcpy(f->fields.speed,p.speed);
+        if (!archived || p.angle[0]) strcpy(f->fields.angle,p.angle);
         f->motion_ms=c->ms;
     }
     if (p.vertical) { strcpy(f->fields.rate,p.rate); f->rate_ms=c->ms; }
     if (*p.selected) { strcpy(f->fields.selected,p.selected); f->selected_ms=c->ms; }
-    if (c->length==14) cpr_update(&f->cpr,c->word,c->ms);
     f->seen=c->ms;
+    return c->length==14 && cpr_update(&f->cpr,c->word,c->ms);
 }
+
+#if defined(ADS_B_TDECK_PLUS) || defined(TDECK_REPLAY_HOST_TEST)
+bool tdeck_replay_aircraft(const TdeckReplayFrame *frames, unsigned count,
+                           TdeckReplayAircraft *aircraft, bool (*progress)(void *), void *context) {
+    if (!count) return false;
+    Flight flight={0};
+    *aircraft=(TdeckReplayAircraft){0};
+    for (unsigned i=0;i<count;i++) {
+        if (i%16==0 && !progress(context)) return false;
+        if (update_flight(&flight,&frames[i].card,true))
+            strcpy(aircraft->position_at,frames[i].local_time);
+    }
+    const TdeckReplayFrame *last=&frames[count-1];
+    strcpy(aircraft->received_at,last->local_time);
+    aircraft->info=(AircraftInfo){
+        .icao=address(&last->card),.seen=flight.seen,.fixed=flight.cpr.fixed,
+        .lat=flight.cpr.lat,.lon=flight.cpr.lon
+    };
+    strcpy(aircraft->info.callsign,flight.fields.name);
+    strcpy(aircraft->info.altitude,flight.fields.altitude);
+    strcpy(aircraft->info.speed,flight.fields.speed);
+    strcpy(aircraft->info.heading,flight.fields.angle);
+    return true;
+}
+#endif
 
 static Flight *prior_flight(History *h, const Card *c) {
     uint32_t addr=address(c);
@@ -236,7 +271,7 @@ static void remember_evicted(History *h, const Card *c) {
         f=&h->prior[slot];
         *f=(Flight){.boot=c->boot,.address=address(c)};
     }
-    if (c->ms>=f->seen) update_flight(f,c);
+    if (c->ms>=f->seen) update_flight(f,c,false);
 }
 
 /* Rebuild at most 64 packets when the card changes. Even if a packet was
@@ -249,7 +284,7 @@ static void flight_at(Flight *f, History *h, unsigned index) {
     for (unsigned i=0; i<=index; i++) {
         const Card *p=&h->cards[i];
         if (p->boot==c->boot && p->word[0]>>3!=2 && address(p)==f->address && p->ms>=f->seen)
-            update_flight(f,p);
+            update_flight(f,p,false);
     }
 }
 
@@ -263,6 +298,44 @@ static unsigned aircraft_count(const History *h) {
         if (j==i) planes++;
     }
     return planes;
+}
+
+unsigned history_aircraft(uint32_t boot, uint32_t addresses[CARDS]) {
+    History *h=&live;
+    unsigned count=0;
+    for (unsigned i=h->count; i>0; i--) {
+        const Card *c=&h->cards[i-1];
+        if (c->boot!=boot || c->word[0]>>3!=17) continue;
+        uint32_t icao=address(c);
+        unsigned j=0;
+        while (j<count && addresses[j]!=icao) j++;
+        if (j==count) addresses[count++]=icao;
+    }
+    return count;
+}
+
+bool history_aircraft_info(uint32_t boot, uint32_t icao, int64_t now, AircraftInfo *info) {
+    History *h=&live;
+    for (unsigned i=h->count; i>0; i--) {
+        const Card *c=&h->cards[i-1];
+        if (c->boot!=boot || c->word[0]>>3!=17 || address(c)!=icao) continue;
+        Flight flight;
+        flight_at(&flight,h,i-1);
+        *info=(AircraftInfo){.icao=icao,.seen=flight.seen};
+        strcpy(info->callsign,flight.fields.name);
+        if (now-flight.height_ms<=60000) strcpy(info->altitude,flight.fields.altitude);
+        if (now-flight.motion_ms<=60000) {
+            strcpy(info->speed,flight.fields.speed);
+            strcpy(info->heading,flight.fields.angle);
+        }
+        if (flight.cpr.fixed && now-flight.cpr.fix_ms<=60000) {
+            info->fixed=true;
+            info->lat=flight.cpr.lat;
+            info->lon=flight.cpr.lon;
+        }
+        return true;
+    }
+    return false;
 }
 
 static void status_line(char *row, const char *left, const char *right) {

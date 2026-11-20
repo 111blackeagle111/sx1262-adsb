@@ -7,6 +7,10 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef ESP_PLATFORM
+#include "esp_heap_caps.h"
+#include "esp_memory_utils.h"
+#endif
 
 #include "demod/preamble.c"
 #include "demod/sequence.c"
@@ -79,6 +83,48 @@ static void make_test_shape(void) {
     }
 }
 
+/* A 112-bit reply fills about twenty 6 us bins. A 56-bit reply fills ten.
+ * Count bins that carry both power and modulation: a strong narrow spike
+ * can raise the average power, and a steady carrier can have the right
+ * duration, but neither contains a train of half-microsecond pulses. */
+ReplyShape decoder_candidate(const Capture *c) {
+    enum { BIN=8, BINS=SAMPLES/BIN };
+    int level[BINS], peak=0, active=0;
+    bool changing[BINS];
+    for (int b=0; b<BINS; b++) {
+        const uint8_t *p=c->raw+b*BIN;
+        int sum=p[0], variation=0;
+        for (int i=1; i<BIN; i++) {
+            sum+=p[i];
+            variation+=abs((int)p[i]-p[i-1]);
+        }
+        level[b]=sum;
+        changing[b]=variation>=2*(BIN-1); /* One dB per step on average. */
+    }
+    int before=(level[0]+level[1])/2;
+    int after=(level[BINS-2]+level[BINS-1])/2;
+    int floor=before<after ? before : after;
+    for (int b=0; b<BINS; b++) {
+        int rise=floor-level[b];
+        if (rise>peak) peak=rise;
+    }
+    /* The relative threshold excludes the tail of a strong spike. Keep
+     * the absolute threshold low enough for a reply near the noise floor. */
+    int threshold=peak/3;
+    if (threshold<4*BIN) threshold=4*BIN;
+    for (int b=0; b<BINS; b++)
+        if (changing[b] && floor-level[b]>=threshold) active++;
+    if (active<7) return NO_REPLY;
+    if (active<14) {
+        int score;
+        return sx_short_gate(c->raw,SAMPLES,750000,0,SAMPLES,&score)>=0 ? SHORT_REPLY : NO_REPLY;
+    }
+    candidate_t hit[2];
+    if (sx_preambles_model(c->raw,SAMPLES,shape_data,ASSET_SIZE(shape),hit,2,4,3500) ||
+        sx_preambles_model(c->raw,SAMPLES,test_shape,sizeof(test_shape),hit,2,4,3500)) return LONG_REPLY;
+    return NO_REPLY;
+}
+
 /* A completed Result is always checked independently of the search that
  * proposed it. The same checks protect the host replay and the OLED. */
 static bool accept(Result *r, int rank, const char *method, int df) {
@@ -120,7 +166,7 @@ static void position(Result *r, candidate_t p) {
 #ifndef MAX_PENDING
 #define MAX_PENDING 96
 #endif
-enum FitStage { FIT_1090, FIT_MEASURED, FIT_HEADER, FIT_RESIDUAL, FIT_REPEAT, FIT_DONE };
+enum FitStage { FIT_WHOLE, FIT_1090, FIT_MEASURED, FIT_HEADER, FIT_RESIDUAL, FIT_REPEAT, FIT_DONE };
 typedef struct {
     Result r;
     enum FitStage stage;
@@ -412,12 +458,14 @@ static void defer(Result *r) {
     Pending *p = &pending[(head+count++)%MAX_PENDING];
     p->r = *r;
     p->strong = rise >= 14*128;
-    p->stage = p->strong ? FIT_1090 : rise >= 12*128 ? FIT_HEADER : FIT_REPEAT;
+    p->stage = p->strong ? FIT_WHOLE : rise >= 12*128 ? FIT_HEADER : FIT_REPEAT;
 }
 
 unsigned decoder_evictions(void) {
     return drops;
 }
+
+#include "demod/whole_reply.c"
 
 bool decoder_idle(int64_t now_ms) {
     check_short(now_ms);
@@ -430,6 +478,15 @@ bool decoder_idle(int64_t now_ms) {
     enum FitStage stage = p->stage;
     if (stage != FIT_DONE) p->stage++;
     switch (stage) {
+    case FIT_WHOLE:
+        /* Retry a strong burst while it is still near the head of the queue.
+         * We get here only between fresh captures. The adaptive and history
+         * passes can still use the original trace if this fit fails. */
+        r->support_count = 0;
+        rank = fit_whole_reply(r->capture.raw,r->anchor,r->word);
+        ok = accept(r,rank,"whole-reply timing",17);
+        if (ok) remember(r);
+        break;
     case FIT_1090:
     case FIT_MEASURED:
         m = models[stage==FIT_1090 ? BAND1090 : RF];
@@ -498,10 +555,20 @@ void decoder_capture(const Capture *c) {
     int n = sx_preambles_model(c->raw,SAMPLES,shape_data,ASSET_SIZE(shape),positions,12,4,3500);
     bool hint = c->last_ms >= hint_ms && c->last_ms-hint_ms <= 60000;
     collect_short(c);
+    /* On the strongest preamble, try the responses measured at 1090 MHz
+     * first. A good match here saves several full-frame trellis searches. */
+    for (int i = 0; i < n; i++)
+        if (positions[i].score > best.score) best = positions[i];
+    if (n) {
+        position(&r,best);
+        if (try_model(&r,BAND1090) || try_model(&r,FAST1090) ||
+            try_model(&r,RF) || try_model(&r,REG)) goto independent;
+    }
     for (int i = 0; i < n; i++) {
+        if (positions[i].sample == best.sample) continue;
         position(&r,positions[i]);
-        if (r.score > best.score) best = positions[i];
-        if (try_model(&r,RF) || try_model(&r,REG)) goto independent;
+        if (try_model(&r,RF) || try_model(&r,REG) || try_model(&r,BAND1090))
+            goto independent;
     }
     if (hint) {
         Response m = models[REG];
@@ -512,12 +579,6 @@ void decoder_capture(const Capture *c) {
             if (accept(&r,rank,"DF11-assisted",17)) goto done;
         }
     }
-    for (int i = 0; i < n; i++) {
-        position(&r,positions[i]);
-        if (try_model(&r,BAND1090)) goto independent;
-    }
-    position(&r,best);
-    if (n && try_model(&r,FAST1090)) goto independent;
     if (n && try_family(&r,positions,n,hint)) return;
     int nf = sx_preambles_model(c->raw,SAMPLES,test_shape,sizeof(test_shape),fixture,3,4,3500);
     Response m = models[BAND1090];
@@ -536,6 +597,10 @@ done:
     publish(&r);
 }
 
+#ifdef ESP_PLATFORM
+bool decoder_workspace_internal(void) { return esp_ptr_internal(work); }
+#endif
+
 bool decoder_init(Report report) {
     publish = report;
     models[RF] = response(measured_data,measured_end,"measured RF");
@@ -544,6 +609,12 @@ bool decoder_init(Report report) {
     models[BAND1090] = response(standard_data,standard_end,"1090 MHz RF");
     models[FAST1090] = response(fast_data,fast_end,"1090 MHz fast RSSI");
     make_test_shape();
+#ifdef ESP_PLATFORM
+    /* Ordinary calloc prefers PSRAM for a block this large. Every trellis
+     * search uses this workspace, so ask for fast internal RAM first. */
+    work = heap_caps_calloc(1,sizeof(*work),MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
+    if (!work)
+#endif
     work = calloc(1,sizeof(*work));
     extra = calloc(1,sizeof(*extra));
     repeats = calloc(1,sizeof(*repeats));

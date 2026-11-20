@@ -26,9 +26,18 @@ typedef struct {
 
 typedef void (*Report)(const Result *result);
 
+/* When the input queue backs up, reserve space for plausible short or long
+ * replies. Call after decoder_init. */
+typedef enum { NO_REPLY, SHORT_REPLY, LONG_REPLY } ReplyShape;
+ReplyShape decoder_candidate(const Capture *capture);
+
 /* One decoder owns its scratch, tracks and pending captures. Call these from
  * the same task. A second task can queue radio captures at any time. */
 bool decoder_init(Report report);
+#ifdef ESP_PLATFORM
+/* Read after initialization to check which RAM the allocator supplied. */
+bool decoder_workspace_internal(void);
+#endif
 bool decoder_self_test(void);
 void decoder_capture(const Capture *capture);
 bool decoder_idle(int64_t now_ms);

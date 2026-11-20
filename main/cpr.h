@@ -19,5 +19,6 @@ typedef struct {
     bool fixed, surface;
 } CprTrack;
 
-void cpr_update(CprTrack *track, const uint8_t word[14], int64_t ms);
+/* True when this frame produced a position. */
+bool cpr_update(CprTrack *track, const uint8_t word[14], int64_t ms);
 #endif

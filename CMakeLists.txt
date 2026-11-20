@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 set(IDF_TARGET esp32s3)
 set(COMPONENTS main)
+option(ADS_B_TDECK_PLUS "Build the T-Deck Plus receiver with color display" OFF)
+# ESP-IDF reads component requirements in a separate CMake script process.
+set(ENV{ADS_B_TDECK_PLUS} "${ADS_B_TDECK_PLUS}")
+if(ADS_B_TDECK_PLUS)
+    set(SDKCONFIG "${CMAKE_BINARY_DIR}/sdkconfig")
+    set(SDKCONFIG_DEFAULTS "sdkconfig.defaults;sdkconfig.tdeck-plus")
+    set(ADS_B_TDECK_REPLAY "" CACHE FILEPATH "Optional generated T-Deck replay fixture")
+endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(lilygo_adsb)
