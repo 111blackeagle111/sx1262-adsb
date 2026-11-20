@@ -27,6 +27,7 @@ bool journal_language(bool italian);
 bool journal_save(const Result *r, uint32_t boot, unsigned tests);
 bool journal_clear(void);
 bool journal_dump(void);
+void journal_status(void);
 #ifdef __cplusplus
 }
 #endif

@@ -19,6 +19,7 @@ static const Log power={"/adsb-power","/adsb-power.1",4};
 static const char *marker="/adsb-erase", *dial="/adsb-hz";
 static const char *language="/adsb-lang";
 static lfs_t *fs;
+static bool clear_pending;
 
 static bool remove_file(const char *path) {
     int rc=lfs_remove(fs,path);
@@ -32,12 +33,20 @@ static bool write_file(const char *path, const void *data, unsigned size, int mo
     return lfs_file_close(fs,&f)==0 && ok;
 }
 
+/* Rotation only creates a non-empty previous generation. Truncating it
+ * commits erase intent in its existing directory entry, even on a full FS.
+ * Remove it last so a reset can resume the operation. */
 static bool finish_clear(void) {
-    return remove_file(packets.previous) && remove_file(packets.file) && remove_file(marker);
+    clear_pending=true;
+    if (!remove_file(packets.file) || !remove_file(packets.previous)) return false;
+    clear_pending=false;
+    return true;
 }
 bool journal_clear(void) {
-    uint8_t yes=1;
-    return write_file(marker,&yes,sizeof(yes),LFS_O_TRUNC) && finish_clear();
+    lfs_file_t file;
+    int rc=lfs_file_open(fs,&file,packets.previous,LFS_O_WRONLY|LFS_O_TRUNC);
+    if (rc==LFS_ERR_NOENT) return remove_file(packets.file);
+    return rc==0 && lfs_file_close(fs,&file)==0 && finish_clear();
 }
 bool journal_dial(uint32_t hz) {
     return write_file(dial,&hz,sizeof(hz),LFS_O_TRUNC);
@@ -88,7 +97,13 @@ bool journal_begin(uint32_t *hz, bool *italian) {
     fs=InternalFS._getFS();
     struct lfs_info info;
     int rc=lfs_stat(fs,marker,&info);
-    if (rc!=LFS_ERR_NOENT && (rc<0 || !finish_clear())) return false;
+    if (rc!=LFS_ERR_NOENT) {
+        /* Old firmware wrote one byte before starting the erase. A zero-byte
+         * file can remain when LittleFS created the entry but ran out of space. */
+        if (rc<0 || (info.size && !finish_clear()) || !remove_file(marker)) return false;
+    }
+    rc=lfs_stat(fs,packets.previous,&info);
+    if (rc!=LFS_ERR_NOENT && (rc<0 || (!info.size && !finish_clear()))) return false;
     lfs_file_t file;
     if (!lfs_file_open(fs,&file,dial,LFS_O_RDONLY)) {
         uint32_t value;
@@ -105,6 +120,7 @@ bool journal_begin(uint32_t *hz, bool *italian) {
 }
 
 bool journal_save(const Result *r, uint32_t boot, unsigned tests) {
+    if (clear_pending && !finish_clear()) return false;
     const Log &log=r->length?packets:power;
     struct lfs_info info;
     int rc=lfs_stat(fs,log.file,&info);
@@ -127,4 +143,20 @@ bool journal_dump(void) {
         if (!read_log(file,true)) return false;
     }
     return true;
+}
+
+static int count_block(void *context, lfs_block_t block) {
+    (void)block;
+    ++*(unsigned *)context;
+    return 0;
+}
+
+void journal_status(void) {
+    if (!fs) { board_print("SXFS unavailable\n"); return; }
+    unsigned blocks=0;
+    int rc=lfs_traverse(fs,count_block,&blocks);
+    char text[128];
+    snprintf(text,sizeof(text),"SXFS rc=%d used=%u total=%u block_size=%u\n",
+             rc,blocks,(unsigned)fs->cfg->block_count,(unsigned)fs->cfg->block_size);
+    board_print(text);
 }

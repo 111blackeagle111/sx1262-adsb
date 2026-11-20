@@ -211,7 +211,7 @@ static void system_key(Key k) {
         } else {
             int64_t cutoff=uptime_ms();
             if (!mounted || !journal_clear()) { notice=italian?"Canc. fallita":"Erase failed"; return; }
-            history_clear(); cleared=cutoff; test_count=0;
+            history_clear(); cleared=cutoff; test_count=0; trace_ok=true;
             notice=italian?"Storico vuoto":"History cleared";
         }
     }
@@ -276,6 +276,7 @@ static void console(const Page *last_page) {
             snprintf(msg,sizeof(msg),"SXBATT usb=%d mv=%u percent=%d visible=%d\n",usb_powered,battery_mv,battery_percent,battery_visible);
             board_print(msg);
         } else if (!strcmp(line,"dump")) { board_print(mounted && journal_dump() ? "SXEND\n" : "SXERROR reading journal\n"); }
+        else if (!strcmp(line,"journal status")) journal_status();
         else if (!strcmp(line,"paper")) board_paper_status();
         else if (!strcmp(line,"paper clean")) { cleaning++; redraw=true; }
         else if (!strcmp(line,"bootloader")) board_bootloader();
