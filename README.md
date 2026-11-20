@@ -1,5 +1,14 @@
 # ADS-B on the LilyGO T3-S3 and T-Echo
 
+## Bilingual firmware for LilyGO receivers
+
+| Receiver | Firmware download | Guide and checksums |
+| --- | --- | --- |
+| **T-Deck Plus** · ESP32-S3, SX1262, 320 × 240 TFT | [Download the T-Deck Plus ZIP](https://github.com/111blackeagle111/sx1262-adsb/releases/download/tdeck-plus-v0.1.0/tdeck-plus-adsb.zip) | [Installation, features and SHA-256](https://github.com/111blackeagle111/sx1262-adsb/releases/tag/tdeck-plus-v0.1.0) |
+| **Original T-Echo** · nRF52840, SX1262, 200 × 200 e-paper | [Download the T-Echo UF2](https://github.com/111blackeagle111/sx1262-adsb/releases/download/techo-v0.1.0/techo-adsb.uf2) | [Installation, features and SHA-256](https://github.com/111blackeagle111/sx1262-adsb/releases/tag/techo-v0.1.0) |
+
+Both releases support English and Italian. The T-Deck Plus includes a traffic map, microSD replay and an RF activity indicator. The T-Echo includes manual standby with the Frecce Tricolori screen and can clear packet history when internal storage is nearly full. Built on [Salvatore Sanfilippo’s sx1262-adsb receiver](https://github.com/antirez/sx1262-adsb).
+
 Tired of waiting for LoRa messages? You are in the right place: this firmware turns the **LilyGO T3-S3** with an OLED and the **original LilyGO T-Echo** with an e-paper display into pocket aircraft receivers. Both use an unmodified SX1262 radio (no hardware modifications needed). Connect an antenna to the LoRa antenna connector (even the stock antenna works) and power the board by USB or battery. It listens on 1090 MHz for the ADS-B messages in which aircraft broadcast their identity, position and movement. The display shows the flight's callsign or the aircraft's six-character address in large type. As reports arrive, the board fills in altitude, speed, direction and coordinates. The sampler, decoder and flight display logic are written in C. You can retrieve the recordings over USB after an outing. Note: **the technical details used in order to turn the SX1262 into an ADSB receiver are quite interesting, check them later**.
 
 <img src="docs/receivers-outdoors.jpg" width="560" alt="Two handheld receivers outdoors. The T-Echo's e-paper screen shows flight RYR9JW and the T3-S3's OLED shows aircraft 4BAA79.">
@@ -16,12 +25,9 @@ These are screenshots from the board. The upper pair shows the same packet three
 
 ## Install without compiling
 
-| Board | Download | What you need |
-| --- | --- | --- |
-| Original T-Echo, nRF52840, SX1262, 1.54-inch monochrome e-paper | [T-Echo firmware (.uf2)](firmware/techo-adsb.uf2) | USB data cable and the board's UF2 drive |
-| T3-S3, ESP32-S3, SX1262, monochrome OLED, 4 MB flash | [T3-S3 firmware and installer (.zip)](firmware/t3s3-adsb.zip) | USB data cable, Python 3 and esptool |
+Choose the matching download above for the T-Deck Plus or original T-Echo. The T3-S3 with a 4 MB flash and monochrome OLED has a [separate ZIP and installer](https://github.com/111blackeagle111/sx1262-adsb/raw/refs/tags/tdeck-plus-v0.1.0/firmware/t3s3-adsb.zip).
 
-On GitHub, use **Download raw file** to save a firmware download. [SHA-256 checksums](firmware/SHA256SUMS) · [Third-party notices](firmware/NOTICES.txt)
+The bilingual UF2 uses Adafruit nRF52 1.3.0. [T-Echo source and operating guide](https://github.com/111blackeagle111/sx1262-adsb/tree/techo-v0.1.0) · [T-Deck Plus source and operating guide](https://github.com/111blackeagle111/sx1262-adsb/tree/tdeck-plus-v0.1.0) · [Third-party notices](firmware/NOTICES.txt)
 
 ### T-Echo
 
