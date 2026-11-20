@@ -4,6 +4,7 @@ import argparse
 import datetime
 import importlib.util
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -20,9 +21,9 @@ def receiver_application(header):
             app[80:112].split(b"\0", 1)[0] == b"lilygo_adsb")
 
 def run(args):
-    from serial.tools import list_ports
     port = args.port
     if not port:
+        from serial.tools import list_ports
         ports = [p.device for p in list_ports.comports() if (p.vid, p.pid) == (0x303a, 0x1001)]
         if len(ports) != 1:
             raise SystemExit("Hold BOOT, tap RESET, then release BOOT on the T3-S3. "
@@ -31,10 +32,14 @@ def run(args):
     for _, name in IMAGES:
         if not (HERE / name).is_file():
             raise SystemExit("Extract the whole ZIP first. Missing " + name)
-    def flash(*words, reset=False):
-        subprocess.run([sys.executable, "-m", "esptool", "--chip", "esp32s3", "--port", port,
+    def flash(*words, reset=False, read_output=False):
+        return subprocess.run([sys.executable, "-m", "esptool", "--chip", "esp32s3", "--port", port,
                         "--before", "no_reset", "--after", "hard_reset" if reset else "no_reset",
-                        *map(str, words)], check=True)
+                        *map(str, words)], check=True, stdout=subprocess.PIPE if read_output else None, text=read_output)
+    identification = flash("flash_id", read_output=True).stdout
+    print(identification, end="", flush=True)
+    if not re.search(r"^Detected flash size:\s*4\s*MB\s*$", identification, re.MULTILINE | re.IGNORECASE):
+        raise SystemExit("This package needs a T3-S3 with 4 MB flash. Check the board and USB port.")
     with tempfile.TemporaryDirectory() as tmp:
         header = Path(tmp) / "header.bin"
         flash("read_flash", "0x8000", "0x8100", header)

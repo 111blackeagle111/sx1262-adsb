@@ -18,6 +18,9 @@ for name in radio.c radio.h radio_bus.h sampler.c decoder.c receiver.h selftest.
 done
 cp -R "$root/main/demod" "$root/main/vendor" "$sketch/"
 (cd "$sketch" && cmake -P "$root/models/assets.cmake")
+# Keep the compiler's diagnostic filenames independent of the build host.
+map_bsp="-fmacro-prefix-map={runtime.platform.path}=adafruit-nrf52"
 arduino-cli compile --fqbn adafruit:nrf52:pca10056 --libraries "$libs/lib" \
-    --build-path "$out/obj" --build-property "compiler.c.extra_flags=-DMAX_PENDING=12 -I\"$sketch\"" "$sketch"
+    --build-path "$out/obj" --build-property "compiler.c.extra_flags=-DMAX_PENDING=12 $map_bsp -I\"$sketch\"" \
+    --build-property "compiler.cpp.extra_flags=$map_bsp" "$sketch"
 python3 "$root/techo/uf2.py" "$out/obj/techo.ino.hex" "$out/techo-adsb.uf2"
